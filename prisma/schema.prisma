@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// A School is the single account/tenant. One login per établissement.
+// ---------------------------------------------------------------------------
+model School {
+  id                    String    @id @default(cuid())
+  name                  String
+  city                  String?
+  type                  String? // Primaire | Collège | Lycée | Franco-arabe...
+  contactName           String
+  phone                 String    @unique
+  email                 String?
+  passwordHash          String
+  createdAt             DateTime  @default(now())
+
+  subscriptionStatus    String    @default("trial") // trial | active | expired
+  trialEndsAt           DateTime?
+  subscriptionRenewsAt  DateTime?
+
+  receiptCounter        Int       @default(0)
+
+  academicYears         AcademicYear[]
+  classes               SchoolClass[]
+  students              Student[]
+  payments              Payment[]
+  reminders             Reminder[]
+  subscriptionPayments  SubscriptionPayment[]
+  syncLogEntries        SyncLogEntry[]
+}
+
+model AcademicYear {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  label     String // "2026-2027"
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  classes   SchoolClass[]
+
+  @@unique([schoolId, label])
+}
+
+model SchoolClass {
+  id                      String   @id @default(cuid())
+  schoolId                String
+  school                  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYearId          String
+  academicYear            AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  name                    String // "6e A"
+  level                   String // Primaire | Collège | Lycée
+  order                   Int      @default(0) // CP1..Terminale ordering
+
+  tuitionAmount           Int?
+  registrationFee         Int?
+
+  reminderEnabled         Boolean  @default(true)
+  reminderBeforeDays      Int      @default(7)
+  reminderAfterDays       String   @default("3,10") // csv of day offsets
+  reminderHour            String   @default("08:00")
+  reminderMessageTemplate String?
+
+  archived                Boolean  @default(false)
+
+  createdAt               DateTime @default(now())
+
+  tranches                Tranche[]
+  students                Student[]
+
+  @@unique([schoolId, academicYearId, name])
+}
+
+model Tranche {
+  id        String   @id @default(cuid())
+  classId   String
+  class     SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  label     String // "1re tranche"
+  amount    Int
+  dueType   String // date | end_of_month | end_of_term
+  dueDate   DateTime
+  order     Int      @default(0)
+
+  allocations PaymentAllocation[]
+}
+
+model Student {
+  id             String   @id @default(cuid())
+  schoolId       String
+  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classId        String
+  class          SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  matricule      String
+  lastName       String
+  firstName      String
+  birthDate      DateTime?
+  gender         String? // M | F
+
+  parentName     String?
+  parentPhone    String?
+  whatsappStatus String   @default("unknown") // reachable | unreachable | invalid | unknown
+
+  status         String   @default("active") // active | repeating | transferred | left
+  tuitionOverride Int?
+
+  createdAt      DateTime @default(now())
+
+  payments       Payment[]
+  reminders      Reminder[]
+  promotionDecisions PromotionDecision[]
+
+  @@unique([schoolId, matricule])
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  schoolId       String
+  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  amount         Int
+  method         String   @default("cash") // cash | mobile_money | bank
+  receivedBy     String?
+  date           DateTime @default(now())
+  receiptNumber  Int
+  note           String?
+
+  offlineCreated Boolean  @default(false)
+  synced         Boolean  @default(true)
+
+  whatsappNotified Boolean @default(false)
+
+  allocations    PaymentAllocation[]
+
+  @@unique([schoolId, receiptNumber])
+}
+
+model PaymentAllocation {
+  id        String  @id @default(cuid())
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  trancheId String
+  tranche   Tranche @relation(fields: [trancheId], references: [id], onDelete: Cascade)
+  amount    Int
+}
+
+model Reminder {
+  id         String   @id @default(cuid())
+  schoolId   String
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  channel    String   @default("whatsapp")
+  trigger    String   @default("manual") // manual | auto_before | auto_after
+  status     String   @default("sent") // sent | delivered | read | failed
+  message    String
+  sentAt     DateTime @default(now())
+}
+
+model SubscriptionPayment {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  amount    Int
+  provider  String // orange_money | moov_money
+  phone     String
+  status    String   @default("pending") // pending | success | failed
+  reference String?
+  createdAt DateTime @default(now())
+}
+
+model PromotionDecision {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromClassId String
+  toClassId   String?
+  decision    String // promote | repeat | transferred | left
+  createdAt   DateTime @default(now())
+}
+
+model SyncLogEntry {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  entity    String
+  entityId  String
+  action    String
+  syncedAt  DateTime @default(now())
+}
