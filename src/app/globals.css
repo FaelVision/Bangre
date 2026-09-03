@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg-page: #EFEAE1;
+  --color-bg-app: #FCFAF6;
+  --color-bg-sidebar: #FBF7F0;
+  --color-bg-card: #ffffff;
+  --color-bg-subtle: #FBF9F4;
+  --color-bg-zebra: #FDFCF9;
+
+  --color-border: #EBE4D9;
+  --color-border-strong: #DFD8CC;
+  --color-border-row: #F1ECE3;
+
+  --color-text: #221E1A;
+  --color-text-secondary: #4A443C;
+  --color-text-muted: #8A8278;
+  --color-text-mutedalt: #7A736A;
+  --color-text-placeholder: #A39B90;
+
+  --color-primary: #0F7A3D;
+  --color-primary-hover: #0B5E2F;
+  --color-primary-deep: #083A20;
+  --color-success-text: #12793F;
+  --color-success-text-dark: #0A4A27;
+  --color-success-bg: #E4F0E8;
+  --color-success-bg-alt: #E1EFE4;
+  --color-success-border: #D7E7DC;
+  --color-success-bg-soft: #F5FBF7;
+
+  --color-gold-text: #7A5A16;
+  --color-gold-text-dark: #8E6A1E;
+  --color-gold-bg: #FDF6EC;
+  --color-gold-border: #EBD9BC;
+  --color-gold-chip-bg: #F7E7CE;
+  --color-gold-dot: #C0983F;
+  --color-gold-ring: #F7E7CE;
+
+  --color-danger-text: #9E1B32;
+  --color-danger-bg: #F7DDE2;
+  --color-danger-bg-soft: #FDF4F6;
+  --color-danger-border: #EBCBD3;
+
+  --color-selection: #F1E3C4;
+
+  --font-sans: var(--font-instrument-sans), 'Instrument Sans', system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: var(--font-instrument-serif), 'Instrument Serif', Georgia, serif;
+}
+
+@theme inline {
+  --color-bg-page: var(--color-bg-page);
+  --color-bg-app: var(--color-bg-app);
+  --color-bg-sidebar: var(--color-bg-sidebar);
+  --color-bg-card: var(--color-bg-card);
+  --color-bg-subtle: var(--color-bg-subtle);
+  --color-bg-zebra: var(--color-bg-zebra);
+
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-border-row: var(--color-border-row);
+
+  --color-text: var(--color-text);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-mutedalt: var(--color-text-mutedalt);
+  --color-text-placeholder: var(--color-text-placeholder);
+
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-deep: var(--color-primary-deep);
+  --color-success-text: var(--color-success-text);
+  --color-success-text-dark: var(--color-success-text-dark);
+  --color-success-bg: var(--color-success-bg);
+  --color-success-bg-alt: var(--color-success-bg-alt);
+  --color-success-border: var(--color-success-border);
+  --color-success-bg-soft: var(--color-success-bg-soft);
+
+  --color-gold-text: var(--color-gold-text);
+  --color-gold-text-dark: var(--color-gold-text-dark);
+  --color-gold-bg: var(--color-gold-bg);
+  --color-gold-border: var(--color-gold-border);
+  --color-gold-chip-bg: var(--color-gold-chip-bg);
+  --color-gold-dot: var(--color-gold-dot);
+  --color-gold-ring: var(--color-gold-ring);
+
+  --color-danger-text: var(--color-danger-text);
+  --color-danger-bg: var(--color-danger-bg);
+  --color-danger-bg-soft: var(--color-danger-bg-soft);
+  --color-danger-border: var(--color-danger-border);
+
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+}
+
+/*
+ * These base resets must live in @layer base: unlayered CSS always beats
+ * layered CSS (incl. Tailwind's utilities layer) regardless of selector
+ * specificity, so a plain `a { color: ... }` here would silently override
+ * every `text-*` utility on every <Link>/<a> in the app.
+ */
+@layer base {
+  html, body {
+    margin: 0;
+    background: var(--color-bg-page);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  a {
+    color: var(--color-primary);
+    text-decoration: none;
+  }
+  a:hover {
+    color: var(--color-primary-hover);
+    text-decoration: underline;
+  }
+
+  table {
+    border-collapse: collapse;
+  }
+
+  ::selection {
+    background: var(--color-selection);
+  }
+}
+
+.font-serif-display {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
