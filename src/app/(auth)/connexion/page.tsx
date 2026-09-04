@@ -12,9 +12,15 @@ const GOOGLE_NOTICES: Record<string, string> = {
 export default async function ConnexionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string }>;
+  searchParams: Promise<{ google?: string; reset?: string }>;
 }) {
-  const { google } = await searchParams;
+  const { google, reset } = await searchParams;
 
-  return <LoginForm googleEnabled={isGoogleConfigured()} googleNotice={google ? GOOGLE_NOTICES[google] : undefined} />;
+  return (
+    <LoginForm
+      googleEnabled={isGoogleConfigured()}
+      googleNotice={google ? GOOGLE_NOTICES[google] : undefined}
+      resetNotice={reset === "ok" ? "Mot de passe mis à jour. Connectez-vous avec votre nouveau mot de passe." : undefined}
+    />
+  );
 }

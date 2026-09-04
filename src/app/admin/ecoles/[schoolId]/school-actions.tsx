@@ -20,7 +20,7 @@ export function SchoolActions({
   schoolId: string;
   schoolName: string;
   contactName: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   blocked: boolean;
   blockedReason: string | null;
@@ -90,7 +90,7 @@ export function SchoolActions({
         <div className="text-[15px] font-semibold">Responsable du compte</div>
         <div className="grid gap-1.5 mt-3 text-[13.5px]">
           <Row label="Nom" value={contactName} />
-          <Row label="Téléphone" value={phone} mono />
+          <Row label="Téléphone" value={phone ?? "—"} mono />
           <Row label="E-mail" value={email ?? "—"} />
         </div>
       </Card>

@@ -27,7 +27,7 @@ export default async function AdminHomePage({
     if (etat && r.state !== etat) return false;
     if (q) {
       const needle = q.toLowerCase();
-      return `${r.name} ${r.contactName} ${r.phone} ${r.city ?? ""}`.toLowerCase().includes(needle);
+      return `${r.name} ${r.contactName} ${r.phone ?? ""} ${r.email ?? ""} ${r.city ?? ""}`.toLowerCase().includes(needle);
     }
     return true;
   });
@@ -142,7 +142,7 @@ function SchoolLine({ row, zebra }: { row: SchoolRow; zebra: boolean }) {
       </Td>
       <Td>
         <div className="text-[13.5px]">{row.contactName}</div>
-        <div className="text-[12px] text-(--color-text-muted) tabular-nums">{row.phone}</div>
+        <div className="text-[12px] text-(--color-text-muted) tabular-nums">{row.phone ?? row.email ?? "—"}</div>
       </Td>
       <Td>
         <StateBadge state={row.state} />

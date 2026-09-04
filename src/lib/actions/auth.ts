@@ -1,12 +1,23 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "crypto";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { createSession, deleteSession, readPendingGoogleLink, clearPendingGoogleLink } from "@/lib/session";
 import { createAdminSession } from "@/lib/admin-session";
-import { LoginSchema, SchoolDetailsSchema, PasswordSchema } from "@/lib/validation";
+import {
+  LoginSchema,
+  SchoolDetailsSchema,
+  PasswordSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
+  parseIdentifier,
+} from "@/lib/validation";
 import { currentAcademicYearLabel } from "@/lib/promotion";
+import { sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendEmail } from "@/lib/mailer";
 
 export type AuthActionState = { error?: string } | undefined;
 
@@ -21,6 +32,9 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
     type: formData.get("type"),
     contactName: formData.get("contactName"),
     phone: formData.get("phone"),
+    // When a Google identity is attached the email is already fixed by it;
+    // the form doesn't collect one, so there's nothing to parse here.
+    email: googleLink ? undefined : formData.get("email"),
   };
 
   const parsed = SchoolDetailsSchema.safeParse(fields);
@@ -28,17 +42,24 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
     return { error: parsed.error.issues[0]?.message ?? "Formulaire invalide." };
   }
 
-  const { schoolName, city, type, contactName, phone } = parsed.data;
+  const { schoolName, city, type, contactName, phone, email } = parsed.data;
 
-  const existing = await prisma.school.findUnique({ where: { phone } });
-  if (existing) {
-    return { error: "Un compte existe déjà avec ce numéro." };
+  if (phone) {
+    const existingPhone = await prisma.school.findUnique({ where: { phone } });
+    if (existingPhone) {
+      return { error: "Un compte existe déjà avec ce numéro." };
+    }
   }
 
-  if (googleLink) {
-    const emailTaken = await prisma.school.findUnique({ where: { email: googleLink.email } });
-    if (emailTaken) {
-      return { error: "Un compte existe déjà avec cette adresse Google. Connectez-vous plutôt." };
+  const accountEmail = googleLink?.email ?? email ?? null;
+  if (accountEmail) {
+    const existingEmail = await prisma.school.findUnique({ where: { email: accountEmail } });
+    if (existingEmail) {
+      return {
+        error: googleLink
+          ? "Un compte existe déjà avec cette adresse Google. Connectez-vous plutôt."
+          : "Un compte existe déjà avec cette adresse e-mail.",
+      };
     }
   }
 
@@ -65,9 +86,9 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
       city,
       type,
       contactName,
-      phone,
+      phone: phone ?? null,
       passwordHash,
-      email: googleLink?.email ?? null,
+      email: accountEmail,
       googleId: googleLink?.googleId ?? null,
       avatarUrl: googleLink?.picture ?? null,
       subscriptionStatus: "trial",
@@ -86,7 +107,7 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
 
 export async function loginAction(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const parsed = LoginSchema.safeParse({
-    phone: formData.get("phone"),
+    identifier: formData.get("identifier"),
     password: formData.get("password"),
   });
 
@@ -94,30 +115,37 @@ export async function loginAction(_prevState: AuthActionState, formData: FormDat
     return { error: parsed.error.issues[0]?.message ?? "Formulaire invalide." };
   }
 
-  const { phone, password } = parsed.data;
+  const { password } = parsed.data;
+  const identity = parseIdentifier(parsed.data.identifier);
 
   // The platform administrator signs in from this same form: a matching Admin
   // record takes precedence over a school with the same number and opens the
   // admin realm instead of the school dashboard. Admin accounts are created
-  // out-of-band (npm run admin:create), never through /inscription.
-  const admin = await prisma.admin.findUnique({ where: { phone } });
-  if (admin) {
-    if (await bcrypt.compare(password, admin.passwordHash)) {
-      await prisma.admin.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
-      await createAdminSession(admin.id);
-      redirect("/admin");
+  // out-of-band (npm run admin:create), never through /inscription, and only
+  // ever have a phone — an email identifier can never match one.
+  if (identity.kind === "phone") {
+    const admin = await prisma.admin.findUnique({ where: { phone: identity.phone } });
+    if (admin) {
+      if (await bcrypt.compare(password, admin.passwordHash)) {
+        await prisma.admin.update({ where: { id: admin.id }, data: { lastLoginAt: new Date() } });
+        await createAdminSession(admin.id);
+        redirect("/admin");
+      }
+      return { error: "Identifiant ou mot de passe incorrect." };
     }
-    return { error: "Numéro ou mot de passe incorrect." };
   }
 
-  const school = await prisma.school.findUnique({ where: { phone } });
+  const school =
+    identity.kind === "phone"
+      ? await prisma.school.findUnique({ where: { phone: identity.phone } })
+      : await prisma.school.findUnique({ where: { email: identity.email } });
   if (!school) {
-    return { error: "Numéro ou mot de passe incorrect." };
+    return { error: "Identifiant ou mot de passe incorrect." };
   }
 
   const valid = await bcrypt.compare(password, school.passwordHash);
   if (!valid) {
-    return { error: "Numéro ou mot de passe incorrect." };
+    return { error: "Identifiant ou mot de passe incorrect." };
   }
 
   await createSession(school.id);
@@ -127,4 +155,83 @@ export async function loginAction(_prevState: AuthActionState, formData: FormDat
 export async function logoutAction() {
   await deleteSession();
   redirect("/connexion");
+}
+
+async function requestOrigin() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+export type ForgotPasswordState = { error?: string; ok?: boolean; mockLink?: string } | undefined;
+
+export async function forgotPasswordAction(
+  _prevState: ForgotPasswordState,
+  formData: FormData
+): Promise<ForgotPasswordState> {
+  const parsed = ForgotPasswordSchema.safeParse({ identifier: formData.get("identifier") });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Formulaire invalide." };
+  }
+
+  const identity = parseIdentifier(parsed.data.identifier);
+  const school =
+    identity.kind === "phone"
+      ? await prisma.school.findUnique({ where: { phone: identity.phone } })
+      : await prisma.school.findUnique({ where: { email: identity.email } });
+
+  // Always report success whether or not an account exists, so this form
+  // can't be used to test which numbers or emails are registered.
+  if (!school) return { ok: true };
+
+  const rawToken = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+  await prisma.passwordResetToken.create({
+    data: { schoolId: school.id, tokenHash, expiresAt },
+  });
+
+  const origin = await requestOrigin();
+  const resetUrl = `${origin}/reinitialiser-mot-de-passe?token=${rawToken}`;
+  const message = `Bonjour ${school.contactName}, voici votre lien de réinitialisation du mot de passe Bangre (valable 1h) : ${resetUrl}`;
+
+  const result =
+    identity.kind === "phone" && school.phone
+      ? await sendWhatsAppMessage(school.phone, message)
+      : school.email
+        ? await sendEmail(school.email, "Réinitialisation de votre mot de passe Bangre", message)
+        : { ok: false, mode: "mock" as const };
+
+  // The mock link is a dev convenience only: revealing it in production would let
+  // anyone type in a registered phone/email and get a live reset link back.
+  const showMockLink = result.mode === "mock" && process.env.NODE_ENV !== "production";
+  return showMockLink ? { ok: true, mockLink: resetUrl } : { ok: true };
+}
+
+export async function resetPasswordAction(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const parsed = ResetPasswordSchema.safeParse({
+    token: formData.get("token"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Formulaire invalide." };
+  }
+
+  const { token, password } = parsed.data;
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+
+  const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+  if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+    return { error: "Ce lien est invalide ou a expiré. Refaites une demande." };
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  await prisma.$transaction([
+    prisma.school.update({ where: { id: resetToken.schoolId }, data: { passwordHash } }),
+    prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
+  ]);
+
+  redirect("/connexion?reset=ok");
 }

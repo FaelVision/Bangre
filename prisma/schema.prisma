@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -16,7 +16,7 @@ model School {
   city                  String?
   type                  String? // Primaire | Collège | Lycée | Franco-arabe...
   contactName           String
-  phone                 String    @unique
+  phone                 String?   @unique
   email                 String?   @unique
   passwordHash          String
   createdAt             DateTime  @default(now())
@@ -46,6 +46,23 @@ model School {
   syncLogEntries        SyncLogEntry[]
   adminMessages         AdminMessage[]
   errorLogs             ErrorLog[]
+  passwordResetTokens   PasswordResetToken[]
+}
+
+/** A one-time link sent to a school to let them set a new password. */
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  schoolId  String
+  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  // Only the hash is stored — the raw token lives in the link sent to the
+  // school and is never persisted, so a database leak can't be replayed.
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([schoolId])
 }
 
 // ---------------------------------------------------------------------------

@@ -10,9 +10,11 @@ import { GoogleButton, AuthDivider } from "@/components/google-button";
 export function LoginForm({
   googleEnabled,
   googleNotice,
+  resetNotice,
 }: {
   googleEnabled: boolean;
   googleNotice?: string;
+  resetNotice?: string;
 }) {
   const [state, formAction, pending] = useActionState(loginAction, undefined);
 
@@ -20,6 +22,12 @@ export function LoginForm({
     <div>
       <div className="text-[27px] font-semibold tracking-tight">Connexion</div>
       <div className="text-sm text-(--color-text-muted) mt-1.5">Accès au bureau du secrétariat.</div>
+
+      {resetNotice && (
+        <div className="text-[13px] text-(--color-success-text-dark) bg-(--color-success-bg-soft) border border-(--color-success-border) rounded-lg px-3.5 py-2.5 mt-5">
+          {resetNotice}
+        </div>
+      )}
 
       {googleNotice && (
         <div className="text-[13px] text-(--color-danger-text) bg-(--color-danger-bg-soft) border border-(--color-danger-border) rounded-lg px-3.5 py-2.5 mt-5">
@@ -41,8 +49,8 @@ export function LoginForm({
 
       <form action={formAction} className="grid gap-4">
         <Field>
-          <Label>Téléphone</Label>
-          <TextInput name="phone" type="tel" placeholder="+226 70 11 22 33" required />
+          <Label>Téléphone ou e-mail</Label>
+          <TextInput name="identifier" placeholder="+226 70 11 22 33 ou contact@ecole.bf" required />
         </Field>
         <Field>
           <Label>Mot de passe</Label>
@@ -50,7 +58,9 @@ export function LoginForm({
         </Field>
         <div className="flex justify-between items-center text-[13px] text-(--color-text-muted)">
           <Checkbox name="remember" label="Rester connecté" defaultChecked />
-          <a href="#">Mot de passe oublié ?</a>
+          <Link href="/mot-de-passe-oublie" className="text-(--color-primary) font-semibold">
+            Mot de passe oublié ?
+          </Link>
         </div>
 
         {state?.error && <div className="text-[13px] text-(--color-danger-text)">{state.error}</div>}

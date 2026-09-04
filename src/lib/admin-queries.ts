@@ -11,7 +11,7 @@ export type SchoolRow = {
   city: string | null;
   type: string | null;
   contactName: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   createdAt: Date;
   blocked: boolean;

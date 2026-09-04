@@ -41,7 +41,7 @@ export default async function AbonnementPage() {
 
       {!isActive && (
         <>
-          <SubscriptionForm defaultPhone={school.phone} />
+          <SubscriptionForm defaultPhone={school.phone ?? ""} />
           <form action={continueTrialAction}>
             <button
               type="submit"
@@ -59,7 +59,7 @@ export default async function AbonnementPage() {
             Vous pouvez prolonger dès maintenant — les jours déjà payés sont conservés et la nouvelle période
             s&apos;ajoute à la date de renouvellement.
           </div>
-          <SubscriptionForm defaultPhone={school.phone} />
+          <SubscriptionForm defaultPhone={school.phone ?? ""} />
           <form action={continueTrialAction} className="mt-4">
             <button
               type="submit"

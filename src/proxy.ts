@@ -4,9 +4,17 @@ import { decryptSession } from "@/lib/session";
 import { decryptAdminSession } from "@/lib/admin-session";
 
 const PUBLIC_PATHS = ["/connexion", "/inscription"];
-// Reachable in every state: the service worker precaches the offline fallback,
-// which must not depend on a session or bounce signed-in users away.
-const ALWAYS_ALLOWED = ["/hors-ligne"];
+// Reachable in every state, whether signed in or not: the service worker
+// precaches the offline fallback, which must not depend on a session or
+// bounce signed-in users away; password reset is the only way to change a
+// password (there's no such setting once signed in), so it must stay usable
+// even for a signed-in school; the privacy policy is public information.
+const ALWAYS_ALLOWED = [
+  "/hors-ligne",
+  "/mot-de-passe-oublie",
+  "/reinitialiser-mot-de-passe",
+  "/confidentialite",
+];
 const SESSION_COOKIE = "bangre_session";
 const ADMIN_COOKIE = "bangre_admin";
 

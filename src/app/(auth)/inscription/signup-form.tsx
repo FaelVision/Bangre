@@ -74,17 +74,40 @@ export function SignupForm({
           </div>
           <div className={googleLink ? "sm:col-span-2" : undefined}>
             <Field>
-              <Label>Téléphone (WhatsApp)</Label>
-              <TextInput name="phone" type="tel" placeholder="+226 __ __ __ __" required />
+              <Label>
+                Téléphone (WhatsApp)<span className="text-(--color-text-muted) font-normal"> — optionnel</span>
+              </Label>
+              <TextInput name="phone" type="tel" placeholder="+226 __ __ __ __" />
             </Field>
+            {!googleLink && (
+              <div className="text-[11.5px] text-(--color-text-muted) mt-1.5 leading-snug">
+                La récupération de mot de passe par numéro n&apos;est pas encore disponible — préférez l&apos;e-mail
+                ci-contre.
+              </div>
+            )}
           </div>
           {!googleLink && (
-            <Field>
-              <Label>Mot de passe</Label>
-              <TextInput name="password" type="password" placeholder="8 caractères minimum" required minLength={8} />
-            </Field>
+            <>
+              <Field>
+                <Label>
+                  E-mail<span className="text-(--color-primary) font-semibold"> — recommandé</span>
+                </Label>
+                <TextInput name="email" type="email" placeholder="contact@ecole.bf" />
+              </Field>
+              <Field>
+                <Label>Mot de passe</Label>
+                <TextInput name="password" type="password" placeholder="8 caractères minimum" required minLength={8} />
+              </Field>
+            </>
           )}
         </div>
+
+        {!googleLink && (
+          <div className="text-[12px] text-(--color-text-muted) mt-2">
+            Renseignez au moins l&apos;un des deux : téléphone ou e-mail. L&apos;e-mail est recommandé — c&apos;est le
+            seul moyen de récupérer l&apos;accès en cas de mot de passe oublié pour l&apos;instant.
+          </div>
+        )}
 
         <div className="mt-4.5">
           <Checkbox name="terms" required label="J'accepte les conditions d'utilisation de Bangre." />

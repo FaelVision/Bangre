@@ -78,6 +78,7 @@ export async function sendAdminMessageAction(schoolId: string, body: string) {
     select: { id: true, phone: true, contactName: true },
   });
   if (!school) return { error: "Établissement introuvable." };
+  if (!school.phone) return { error: "Cet établissement n'a pas de numéro de téléphone enregistré." };
 
   const text = body.trim();
   if (text.length < 2) return { error: "Le message est vide." };
