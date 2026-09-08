@@ -39,8 +39,7 @@ export type StudentPayload = {
 export type QueuedOperation =
   | { kind: "payment"; payload: PaymentPayload }
   | { kind: "student.create"; payload: StudentPayload }
-  | { kind: "student.update"; studentId: string; payload: StudentPayload }
-  | { kind: "reminder"; studentId: string };
+  | { kind: "student.update"; studentId: string; payload: StudentPayload };
 
 export type QueuedEntry = QueuedOperation & {
   id: string;
@@ -102,21 +101,6 @@ export async function enqueue(operation: QueuedOperation, label: string): Promis
 /** Backwards-compatible helper used by the payment modal. */
 export async function enqueuePayment(payload: PaymentPayload, label = "Paiement") {
   return enqueue({ kind: "payment", payload }, label);
-}
-
-/**
- * Queue one or more WhatsApp reminders when offline. Returns true if it queued
- * (i.e. the caller should not also try the live action). The server re-checks
- * at sync time that the family still owes something before sending.
- */
-export async function queueRemindersIfOffline(
-  students: { id: string; label: string }[]
-): Promise<boolean> {
-  if (typeof navigator === "undefined" || navigator.onLine) return false;
-  for (const s of students) {
-    await enqueue({ kind: "reminder", studentId: s.id }, `Rappel WhatsApp · ${s.label}`);
-  }
-  return true;
 }
 
 export async function listQueued(): Promise<QueuedEntry[]> {

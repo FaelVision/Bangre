@@ -4,13 +4,11 @@ import { decryptSession } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { persistPayment, type RecordPaymentInput } from "@/lib/payments-core";
 import { createStudent, updateStudent, type StudentInput } from "@/lib/students-core";
-import { sendManualReminder } from "@/lib/reminders-core";
 
 type Body =
   | { kind: "payment"; payload: RecordPaymentInput }
   | { kind: "student.create"; payload: StudentInput }
-  | { kind: "student.update"; studentId: string; payload: StudentInput }
-  | { kind: "reminder"; studentId: string };
+  | { kind: "student.update"; studentId: string; payload: StudentInput };
 
 /**
  * Replays one operation captured while the browser was offline.
@@ -58,13 +56,6 @@ export async function POST(req: NextRequest) {
         const result = await updateStudent(session.schoolId, body.studentId, body.payload);
         if (result.ok) return NextResponse.json(result);
         return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
-      }
-
-      case "reminder": {
-        const result = await sendManualReminder(session.schoolId, body.studentId);
-        if (result.ok) return NextResponse.json({ ok: true });
-        // "already up to date", "no phone", "student deleted" — retrying won't help.
-        return NextResponse.json({ ok: false, error: result.skipped, permanent: true }, { status: 400 });
       }
 
       default:

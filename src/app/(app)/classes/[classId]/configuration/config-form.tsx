@@ -59,8 +59,6 @@ export function ConfigForm({
         }))
       : [{ id: null, label: "1re tranche", amount: "", dueType: "date", dueDate: "" }]
   );
-  const [reminderEnabled, setReminderEnabled] = useState(clazz.reminderEnabled);
-
   const trancheSum = tranches.reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const total = Number(tuitionAmount) || 0;
   const balanced = tranches.length === 0 || trancheSum === total;
@@ -257,36 +255,10 @@ export function ConfigForm({
         </div>
 
         <Card>
-          <div className="flex items-center justify-between">
-            <div className="text-[15px] font-semibold">3 · Rappels WhatsApp</div>
-            <button
-              type="button"
-              onClick={() => setReminderEnabled((v) => !v)}
-              className="w-[42px] h-6 rounded-full flex items-center px-0.75 cursor-pointer"
-              style={{ background: reminderEnabled ? "var(--color-success-text)" : "#DFD8CC", justifyContent: reminderEnabled ? "flex-end" : "flex-start" }}
-            >
-              <span className="w-[18px] h-[18px] rounded-full bg-white block" />
-            </button>
-            <input type="hidden" name="reminderEnabled" value={reminderEnabled ? "on" : ""} />
-          </div>
+          <div className="text-[15px] font-semibold">3 · Message de rappel</div>
           <div className="text-[13px] text-(--color-text-muted) mt-1.5 leading-relaxed">
-            Envoi automatique aux parents, avant et après chaque échéance.
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-            <Field>
-              <Label>Avant échéance (jours)</Label>
-              <TextInput name="reminderBeforeDays" type="number" defaultValue={clazz.reminderBeforeDays} />
-            </Field>
-            <Field>
-              <Label>Après échéance (jours, virgule)</Label>
-              <TextInput name="reminderAfterDays" defaultValue={clazz.reminderAfterDays} />
-            </Field>
-            <div className="sm:col-span-2">
-              <Field>
-                <Label>Heure d&apos;envoi</Label>
-                <TextInput name="reminderHour" type="time" defaultValue={clazz.reminderHour} />
-              </Field>
-            </div>
+            Utilisé pour pré-remplir le message WhatsApp quand vous cliquez sur « Envoyer un rappel » — vous
+            l&apos;envoyez vous-même, rien n&apos;est expédié automatiquement.
           </div>
           <div className="text-[12.5px] font-semibold text-(--color-text-secondary) mt-4.5 mb-2">
             Message envoyé au parent

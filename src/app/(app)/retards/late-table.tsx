@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatAmount, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui";
-import { bulkSendReminderAction } from "@/lib/actions/students";
-import { queueRemindersIfOffline } from "@/lib/offline-queue";
+import { bulkPreviewRemindersAction } from "@/lib/actions/students";
 import { PayButton } from "@/components/pay-button";
+import { WhatsAppQueueModal, type PreparedReminder } from "@/components/whatsapp-queue-modal";
 
 export type LateRow = {
   id: string;
@@ -25,6 +24,7 @@ export type LateRow = {
 export function LateTable({ rows }: { rows: LateRow[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const [queue, setQueue] = useState<{ items: PreparedReminder[]; skipped: number } | null>(null);
   const router = useRouter();
 
   function toggle(id: string) {
@@ -40,17 +40,14 @@ export function LateTable({ rows }: { rows: LateRow[] }) {
   }
 
   function sendSelected() {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      alert("Rappels WhatsApp indisponibles hors ligne.");
+      return;
+    }
     startTransition(async () => {
-      const chosen = rows.filter((r) => selected.has(r.id)).map((r) => ({ id: r.id, label: `${r.lastName} ${r.firstName}` }));
-      if (await queueRemindersIfOffline(chosen)) {
-        alert(`Hors ligne : ${chosen.length} rappel(s) seront envoyés à la reconnexion.`);
-        setSelected(new Set());
-        return;
-      }
-      const res = await bulkSendReminderAction(Array.from(selected));
-      if (res && "sent" in res) alert(`${res.sent} rappel(s) envoyé(s) sur ${res.total}.`);
+      const res = await bulkPreviewRemindersAction(Array.from(selected));
+      setQueue({ items: res.prepared, skipped: res.skipped });
       setSelected(new Set());
-      router.refresh();
     });
   }
 
@@ -81,8 +78,13 @@ export function LateTable({ rows }: { rows: LateRow[] }) {
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.id} className="border-t border-(--color-border-row)" style={{ background: i % 2 === 1 ? "var(--color-bg-zebra)" : undefined }}>
-              <td className="py-3 pl-4">
+            <tr
+              key={r.id}
+              onClick={() => router.push(`/eleves/${r.id}`)}
+              className="border-t border-(--color-border-row) cursor-pointer hover:bg-(--color-bg-subtle)"
+              style={{ background: i % 2 === 1 ? "var(--color-bg-zebra)" : undefined }}
+            >
+              <td className="py-3 pl-4" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
                   checked={selected.has(r.id)}
@@ -91,9 +93,7 @@ export function LateTable({ rows }: { rows: LateRow[] }) {
                 />
               </td>
               <Td className="font-semibold">
-                <Link href={`/eleves/${r.id}`} className="text-(--color-text) no-underline hover:underline">
-                  {r.lastName} {r.firstName}
-                </Link>
+                {r.lastName} {r.firstName}
               </Td>
               <Td>{r.className}</Td>
               <Td>{r.parentName ?? "—"}</Td>
@@ -110,14 +110,12 @@ export function LateTable({ rows }: { rows: LateRow[] }) {
                     {r.whatsappStatus === "invalid" ? "Numéro invalide · à appeler" : "Pas sur WhatsApp · à appeler"}
                   </Badge>
                 ) : r.lastReminder ? (
-                  <Badge tone={r.lastReminder.status === "read" ? "success" : "gold"}>
-                    {r.lastReminder.status === "read" ? "Lu" : "WhatsApp"} · {formatDate(r.lastReminder.sentAt)}
-                  </Badge>
+                  <Badge tone="gold">WhatsApp · {formatDate(r.lastReminder.sentAt)}</Badge>
                 ) : (
                   <Badge tone="neutral">Aucun rappel</Badge>
                 )}
               </td>
-              <td className="py-3 pr-4 pl-3 text-right">
+              <td className="py-3 pr-4 pl-3 text-right" onClick={(e) => e.stopPropagation()}>
                 <PayButton
                   studentId={r.id}
                   hint={`${r.lastName} ${r.firstName} · ${r.className}`}
@@ -159,6 +157,7 @@ export function LateTable({ rows }: { rows: LateRow[] }) {
           </a>
         </div>
       )}
+      {queue && <WhatsAppQueueModal items={queue.items} skipped={queue.skipped} onClose={() => setQueue(null)} />}
     </div>
   );
 }

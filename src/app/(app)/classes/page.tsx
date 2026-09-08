@@ -148,7 +148,7 @@ export default async function ClassesPage({
           >
             <div className="text-[22px] text-(--color-primary)">+</div>
             <div className="text-sm font-semibold text-(--color-text-secondary)">Ajouter une classe</div>
-            <div className="text-[12.5px] text-center px-4">Ex. « 6ᵉ C », « Section franco-arabe »</div>
+            <div className="text-[12.5px] text-center px-4">Ex. « 6ᵉ C », « Terminale D »</div>
           </Link>
         </div>
       </div>

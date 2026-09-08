@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatAmount, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui";
-import { bulkSendReminderAction, bulkChangeClassAction } from "@/lib/actions/students";
-import { queueRemindersIfOffline } from "@/lib/offline-queue";
+import { bulkPreviewRemindersAction, bulkChangeClassAction } from "@/lib/actions/students";
+import { WhatsAppQueueModal, type PreparedReminder } from "@/components/whatsapp-queue-modal";
 import type { StudentSummary } from "@/lib/tuition";
 
 export type StudentRow = {
@@ -40,6 +40,7 @@ export function StudentsTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const [moveTarget, setMoveTarget] = useState("");
+  const [queue, setQueue] = useState<{ items: PreparedReminder[]; skipped: number } | null>(null);
   const router = useRouter();
 
   function toggle(id: string) {
@@ -55,21 +56,14 @@ export function StudentsTable({
   }
 
   function sendReminders() {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      alert("Rappels WhatsApp indisponibles hors ligne.");
+      return;
+    }
     startTransition(async () => {
-      const chosen = students
-        .filter((s) => selected.has(s.id))
-        .map((s) => ({ id: s.id, label: `${s.lastName} ${s.firstName}` }));
-      if (await queueRemindersIfOffline(chosen)) {
-        alert(`Hors ligne : ${chosen.length} rappel(s) seront envoyés à la reconnexion.`);
-        setSelected(new Set());
-        return;
-      }
-      const res = await bulkSendReminderAction(Array.from(selected));
-      if (res && "sent" in res) {
-        alert(`${res.sent} rappel(s) WhatsApp envoyé(s) sur ${res.total}.`);
-      }
+      const res = await bulkPreviewRemindersAction(Array.from(selected));
+      setQueue({ items: res.prepared, skipped: res.skipped });
       setSelected(new Set());
-      router.refresh();
     });
   }
 
@@ -192,6 +186,7 @@ export function StudentsTable({
           )}
         </div>
       )}
+      {queue && <WhatsAppQueueModal items={queue.items} skipped={queue.skipped} onClose={() => setQueue(null)} />}
     </div>
   );
 }

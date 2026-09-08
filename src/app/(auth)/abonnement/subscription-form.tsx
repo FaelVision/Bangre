@@ -9,9 +9,35 @@ import { PLAN_LIST, PLANS, yearlySavings, type PlanId } from "@/lib/plans";
 import { cn } from "@/lib/cn";
 
 const PROVIDERS = [
-  { id: "orange_money", label: "Orange Money", color: "#F58220" },
-  { id: "moov_money", label: "Moov Money", color: "#0B5FA5" },
+  {
+    id: "orange_money",
+    label: "Orange Money",
+    color: "#F58220",
+    receiverNumber: "+226 06 62 76 67",
+    // *144# > 2 "Transfert d'argent" > 1 "transfert local" — confirmed on
+    // Orange Burkina Faso's own help pages (orange.bf).
+    ussdMenuPath: "144*2*1",
+  },
+  {
+    id: "moov_money",
+    label: "Moov Money",
+    color: "#0B5FA5",
+    receiverNumber: "+226 01 43 14 15",
+    // Only the base code (*555#) is confirmed; Moov's exact "Transfert
+    // d'argent" submenu digit isn't verified, so it isn't pre-filled — the
+    // link dials *555# and the user picks the menu entry themselves.
+    ussdMenuPath: null,
+  },
 ] as const;
+
+function localDigits(receiverNumber: string) {
+  return receiverNumber.replace(/[^\d]/g, "").replace(/^226/, "");
+}
+
+function buildUssdLink(p: (typeof PROVIDERS)[number], amount: number) {
+  if (!p.ussdMenuPath) return "tel:*555%23";
+  return `tel:*${p.ussdMenuPath}*${localDigits(p.receiverNumber)}*${amount}%23`;
+}
 
 export function SubscriptionForm({ defaultPhone }: { defaultPhone: string }) {
   const [state, formAction, pending] = useActionState(paySubscriptionAction, undefined);
@@ -83,7 +109,7 @@ export function SubscriptionForm({ defaultPhone }: { defaultPhone: string }) {
           <label
             key={p.id}
             className={cn(
-              "h-[52px] rounded-[11px] bg-white flex items-center gap-3 px-3.5 cursor-pointer",
+              "min-h-[52px] rounded-[11px] bg-white flex items-center gap-3 px-3.5 py-2.5 cursor-pointer",
               provider === p.id ? "border-[1.5px] border-(--color-primary)" : "border border-(--color-border-strong)"
             )}
           >
@@ -104,9 +130,23 @@ export function SubscriptionForm({ defaultPhone }: { defaultPhone: string }) {
               }}
             />
             <span className="w-[34px] h-6 rounded-[5px] shrink-0" style={{ background: p.color }} />
-            <span className="text-[14.5px] font-medium">{p.label}</span>
+            <div className="flex-1">
+              <div className="text-[14.5px] font-medium">{p.label}</div>
+              <div className="text-[11.5px] text-(--color-text-muted) tabular-nums">{p.receiverNumber}</div>
+            </div>
+            <a
+              href={buildUssdLink(p, selectedPlan.amount)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-8 shrink-0 rounded-lg border border-(--color-border-strong) bg-white px-2.5 flex items-center text-[12px] font-semibold no-underline hover:no-underline"
+            >
+              Composer
+            </a>
           </label>
         ))}
+      </div>
+      <div className="text-[11.5px] text-(--color-text-muted) mt-1.5 leading-relaxed">
+        « Composer » ouvre le clavier d&apos;appel avec le code déjà rempli (numéro et montant pour Orange Money ;
+        code de base pour Moov Money, à compléter dans le menu affiché). Fonctionne depuis un téléphone.
       </div>
 
       <Field>

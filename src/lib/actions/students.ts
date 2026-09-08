@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { verifySession } from "@/lib/dal";
-import { sendManualReminder, sendManualReminders } from "@/lib/reminders-core";
+import { previewReminder, previewReminders, recordReminderSent } from "@/lib/reminders-core";
 import { normalizePhone } from "@/lib/validation";
 import { parseDateInput } from "@/lib/date";
 import { nextMatricule, normalizeMatricule } from "@/lib/matricule";
@@ -92,20 +92,25 @@ export async function deleteStudentAction(studentId: string) {
   redirect(`/classes/${student.classId}/eleves`);
 }
 
-export async function sendReminderAction(studentId: string) {
+export async function previewReminderAction(studentId: string) {
   const { schoolId } = await verifySession();
-  const res = await sendManualReminder(schoolId, studentId);
-  revalidatePath(`/eleves/${studentId}`);
+  const res = await previewReminder(schoolId, studentId);
   if (!res.ok) return { error: res.skipped };
-  return { ok: true };
+  return res;
 }
 
-export async function bulkSendReminderAction(studentIds: string[]) {
+export async function bulkPreviewRemindersAction(studentIds: string[]) {
   const { schoolId } = await verifySession();
-  const result = await sendManualReminders(schoolId, studentIds);
+  return previewReminders(schoolId, studentIds);
+}
+
+export async function confirmReminderSentAction(studentId: string, trancheId: string | null, message: string) {
+  const { schoolId } = await verifySession();
+  const res = await recordReminderSent(schoolId, studentId, trancheId, message);
+  revalidatePath(`/eleves/${studentId}`);
   revalidatePath("/eleves");
   revalidatePath("/retards");
-  return result;
+  return res;
 }
 
 export async function bulkChangeClassAction(studentIds: string[], newClassId: string) {

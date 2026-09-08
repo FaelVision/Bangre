@@ -257,17 +257,16 @@ model Reminder {
   studentId  String
   student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  // The tranche this reminder was about, when it is a payment reminder. Used to
-  // deduplicate the automatic scheduler: one "before" reminder per tranche, and
-  // one "after" reminder per configured day-offset.
+  // The tranche this reminder was about, when it is a payment reminder.
   trancheId  String?
   tranche    Tranche? @relation(fields: [trancheId], references: [id], onDelete: SetNull)
 
   channel    String   @default("whatsapp")
-  trigger    String   @default("manual") // manual | auto_before | auto_after
-  status     String   @default("sent") // sent | delivered | read | failed
-  // Set from the WhatsApp provider's message id so delivery webhooks can match
-  // a status update back to this row.
+  trigger    String   @default("manual")
+  // Always "sent" today: a reminder is recorded once its wa.me link is
+  // prepared and shown to the user, who sends it themselves from WhatsApp.
+  // No delivery/read tracking without a WhatsApp Business API account.
+  status     String   @default("sent")
   providerMessageId String?
   message    String
   sentAt     DateTime @default(now())

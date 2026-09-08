@@ -23,7 +23,7 @@ export default function NewClassPage() {
         <form action={formAction} className="grid gap-4">
           <Field>
             <Label>Nom de la classe</Label>
-            <TextInput name="name" placeholder="Ex. 6e C, Section franco-arabe" required />
+            <TextInput name="name" placeholder="Ex. 6e C, Terminale D" required />
           </Field>
           <Field>
             <Label>Niveau</Label>

@@ -41,7 +41,7 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
         </div>
         <div className="hidden lg:block lg:flex-1" />
         <div className="flex items-center gap-2.5 flex-wrap">
-          <ReminderButton studentId={student.id} studentLabel={`${student.lastName} ${student.firstName}`} />
+          <ReminderButton studentId={student.id} />
           <PayButton
             studentId={student.id}
             hint={`${student.lastName} ${student.firstName} · ${student.class.name} · ${student.matricule}`}
@@ -207,20 +207,11 @@ export default async function StudentDetailPage({ params }: { params: Promise<{ 
               )}
               {student.reminders.slice(0, 6).map((r) => (
                 <div key={r.id} className="flex justify-between items-center text-[13.5px] py-1.5">
-                  <span>
-                    {formatDate(r.sentAt)} · {r.trigger === "manual" ? "manuel" : r.trigger.replace("auto_", "auto ")}
-                  </span>
-                  <Badge tone={r.status === "read" ? "success" : r.status === "failed" ? "danger" : "gold"}>
-                    {r.status === "read" ? "Lu" : r.status === "failed" ? "Échoué" : "Envoyé"}
-                  </Badge>
+                  <span>{formatDate(r.sentAt)}</span>
+                  <Badge tone="gold">Envoyé</Badge>
                 </div>
               ))}
-              <ReminderButton
-                studentId={student.id}
-                studentLabel={`${student.lastName} ${student.firstName}`}
-                label="Rappel manuel"
-                className="w-full mt-3.5"
-              />
+              <ReminderButton studentId={student.id} label="Rappel manuel" className="w-full mt-3.5" />
             </Card>
           </div>
         </div>

@@ -43,7 +43,12 @@ export function PaymentModal({
   const [contextIsCached, setContextIsCached] = useState(false);
   const [offlineFallback, setOfflineFallback] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [result, setResult] = useState<{ paymentId: string; receiptNumber: number; amount: number } | null>(null);
+  const [result, setResult] = useState<{
+    paymentId: string;
+    receiptNumber: number;
+    amount: number;
+    whatsappUrl?: string | null;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const [query, setQuery] = useState("");
@@ -481,7 +486,7 @@ export function PaymentModal({
                     ? "Il sera synchronisé et numéroté dès le retour de la connexion."
                     : `Reçu N° ${String(result.receiptNumber).padStart(4, "0")} · ${formatCFA(result.amount)}`}
                 </div>
-                <div className="flex gap-2.5 mt-4">
+                <div className="flex flex-wrap gap-2.5 mt-4">
                   {result.paymentId !== "offline" && (
                     <a
                       href={`/api/receipts/${result.paymentId}/pdf`}
@@ -489,6 +494,15 @@ export function PaymentModal({
                       className="flex-1 h-[42px] rounded-[10px] border border-(--color-border-strong) bg-white flex items-center justify-center text-[13.5px] font-semibold no-underline hover:no-underline"
                     >
                       Ouvrir le reçu PDF
+                    </a>
+                  )}
+                  {result.whatsappUrl && (
+                    <a
+                      href={result.whatsappUrl}
+                      target="_blank"
+                      className="flex-1 h-[42px] rounded-[10px] border border-(--color-border-strong) bg-white flex items-center justify-center text-[13.5px] font-semibold no-underline hover:no-underline"
+                    >
+                      Confirmer par WhatsApp
                     </a>
                   )}
                   <button

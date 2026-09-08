@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { prisma } from "../../src/lib/db";
 import { createStudent, updateStudent } from "../../src/lib/students-core";
 import { persistPayment } from "../../src/lib/payments-core";
-import { sendManualReminder, runSchoolReminders } from "../../src/lib/reminders-core";
+import { previewReminder, recordReminderSent } from "../../src/lib/reminders-core";
 import { computeStudentSummary, studentQueryInclude, type StudentWithPayments } from "../../src/lib/tuition";
 import { chargeMobileMoney } from "../../src/lib/mobilemoney";
 
@@ -209,72 +209,74 @@ test("persistPayment: WhatsApp confirmation 'reste à payer' accounts for the en
   if (!s.ok) return;
 
   const tuition = cls.tuitionAmount!;
-  const logs: string[] = [];
-  const orig = console.log;
-  console.log = (...a: unknown[]) => { logs.push(a.join(" ")); };
-  try {
-    const res = await persistPayment(schoolId, {
-      studentId: s.studentId,
-      mode: "partial",
-      trancheIds: [],
-      amount: tuition, // exactly the tuition — the enrolment fee stays unpaid
-      date: new Date().toISOString(),
-      method: "cash",
-      receivedBy: "T",
-      notifyWhatsapp: true,
-    });
-    assert.ok(res.ok);
-  } finally {
-    console.log = orig;
-  }
-  const msg = logs.find((l) => l.includes("[whatsapp:mock]")) ?? "";
-  assert.match(msg, /template=confirmation_paiement/, `expected a confirmation_paiement send — got: ${msg}`);
-  // params: [montant, élève, classe, date, resteAPayer, école, reçu] — see payments-core.ts.
-  const params = JSON.parse(msg.match(/params=(\[.*\])$/)?.[1] ?? "[]") as string[];
-  const remaining = params[4];
-  assert.notEqual(remaining, "0 CFA", `enrolment fee ${regFee} should still be reported as due — got: ${msg}`);
+  const res = await persistPayment(schoolId, {
+    studentId: s.studentId,
+    mode: "partial",
+    trancheIds: [],
+    amount: tuition, // exactly the tuition — the enrolment fee stays unpaid
+    date: new Date().toISOString(),
+    method: "cash",
+    receivedBy: "T",
+    notifyWhatsapp: true,
+  });
+  assert.ok(res.ok);
+  if (!res.ok) return;
+  assert.ok(res.whatsappUrl, "expected a wa.me confirmation link");
+  const text = decodeURIComponent(res.whatsappUrl!.split("text=")[1] ?? "");
+  assert.doesNotMatch(text, /Reste à payer : 0 CFA/, `enrolment fee ${regFee} should still be reported as due — got: ${text}`);
 });
 
 // ---------------------------------------------------------------------------
 // Reminders
 // ---------------------------------------------------------------------------
 
-test("sendManualReminder: records a reminder row (mock mode)", async () => {
+test("previewReminder: builds a message from the student's current situation, no DB write", async () => {
   const late = (await prisma.student.findFirst({
     where: { schoolId, status: "active", parentPhone: { not: null }, classId: classWithTuitionId },
     include: studentQueryInclude,
   })) as StudentWithPayments | null;
   if (!late) return;
   const summary = computeStudentSummary(late);
-  const res = await sendManualReminder(schoolId, late.id);
+  const before = await prisma.reminder.count({ where: { studentId: late.id } });
+  const res = await previewReminder(schoolId, late.id);
   if (summary.remaining > 0) {
     assert.equal(res.ok, true, JSON.stringify(res));
     if (res.ok) {
-      const r = await prisma.reminder.findUniqueOrThrow({ where: { id: res.reminderId } });
-      assert.equal(r.trigger, "manual");
+      assert.equal(res.phone, late.parentPhone);
+      assert.match(res.message, /\d/, "expected an amount in the message");
+      const after = await prisma.reminder.count({ where: { studentId: late.id } });
+      assert.equal(after, before, "preview must not write a Reminder row");
     }
   } else {
     assert.equal(res.ok, false);
   }
 });
 
-test("sendManualReminder: skips a student with no parent phone", async () => {
+test("previewReminder: skips a student with no parent phone", async () => {
   const s = await createStudent(schoolId, { classId: classWithTuitionId, lastName: "Nophone", firstName: "Kid" });
   assert.ok(s.ok);
   if (s.ok) {
-    const res = await sendManualReminder(schoolId, s.studentId);
+    const res = await previewReminder(schoolId, s.studentId);
     assert.equal(res.ok, false);
     if (!res.ok) assert.match(res.skipped, /num[eé]ro/i);
   }
 });
 
-test("runSchoolReminders: runs and is idempotent within a single now()", async () => {
-  const school = await prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { id: true, name: true } });
-  const now = new Date();
-  const first = await runSchoolReminders(school, now);
-  const second = await runSchoolReminders(school, now);
-  assert.equal(second.sent, 0, `second identical run still sent ${second.sent} reminders`);
-  console.log(`      first run: considered=${first.considered} sent=${first.sent} failed=${first.failed}`);
+test("recordReminderSent: records the (possibly edited) final text, not a recomputed one", async () => {
+  const late = (await prisma.student.findFirst({
+    where: { schoolId, status: "active", parentPhone: { not: null }, classId: classWithTuitionId },
+    include: studentQueryInclude,
+  })) as StudentWithPayments | null;
+  if (!late) return;
+  const preview = await previewReminder(schoolId, late.id);
+  if (!preview.ok) return;
+  const edited = "Message modifié à la main par le secrétariat.";
+  const res = await recordReminderSent(schoolId, late.id, preview.trancheId, edited);
+  assert.equal(res.ok, true);
+  const r = await prisma.reminder.findUniqueOrThrow({ where: { id: res.reminderId } });
+  assert.equal(r.trigger, "manual");
+  assert.equal(r.status, "sent");
+  assert.equal(r.message, edited);
 });
 
 // ---------------------------------------------------------------------------

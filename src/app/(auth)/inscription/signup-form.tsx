@@ -63,7 +63,6 @@ export function SignupForm({
             <Select name="type" defaultValue="Secondaire">
               <option value="Primaire">Primaire</option>
               <option value="Secondaire">Secondaire</option>
-              <option value="Franco-arabe">Franco-arabe</option>
             </Select>
           </Field>
           <div className="sm:col-span-2">

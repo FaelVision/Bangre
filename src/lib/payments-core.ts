@@ -6,7 +6,7 @@ import {
   studentQueryInclude,
   type StudentWithPayments,
 } from "@/lib/tuition";
-import { sendWhatsAppTemplate } from "@/lib/whatsapp";
+import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { formatCFA, formatDate } from "@/lib/format";
 
 export type RecordPaymentInput = {
@@ -22,7 +22,7 @@ export type RecordPaymentInput = {
 };
 
 export type RecordPaymentResult =
-  | { ok: true; paymentId: string; receiptNumber: number; amount: number }
+  | { ok: true; paymentId: string; receiptNumber: number; amount: number; whatsappUrl: string | null }
   | { ok: false; error: string };
 
 export async function persistPayment(schoolId: string, input: RecordPaymentInput): Promise<RecordPaymentResult> {
@@ -89,6 +89,7 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
     return { paymentId: payment.id, receiptNumber: payment.receiptNumber, schoolName: school.name };
   });
 
+  let whatsappUrl: string | null = null;
   if (input.notifyWhatsapp && student.parentPhone) {
     // Recompute from the freshly persisted payments so "reste à payer" is exact:
     // it must account for the enrolment fee and every tranche, not just the base
@@ -100,17 +101,10 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
     const remainingAfter = refreshed
       ? computeStudentSummary(refreshed).remaining
       : Math.max(0, student.class.tuitionAmount ?? 0);
-    await sendWhatsAppTemplate(student.parentPhone, "confirmation_paiement", [
-      formatCFA(amount),
-      `${student.firstName} ${student.lastName}`,
-      student.class.name,
-      formatDate(date),
-      formatCFA(remainingAfter),
-      result.schoolName,
-      String(result.receiptNumber),
-    ]);
+    const message = `Bonjour, nous confirmons la réception de ${formatCFA(amount)} pour la scolarité de ${student.firstName} ${student.lastName} (${student.class.name}) le ${formatDate(date)}. Reste à payer : ${formatCFA(remainingAfter)}. Merci. — ${result.schoolName}, reçu N° ${result.receiptNumber}`;
+    whatsappUrl = buildWhatsAppLink(student.parentPhone, message);
     await prisma.payment.update({ where: { id: result.paymentId }, data: { whatsappNotified: true } });
   }
 
-  return { ok: true, paymentId: result.paymentId, receiptNumber: result.receiptNumber, amount };
+  return { ok: true, paymentId: result.paymentId, receiptNumber: result.receiptNumber, amount, whatsappUrl };
 }
