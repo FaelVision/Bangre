@@ -4,7 +4,7 @@ import {
   computeStudentSummary,
   type StudentWithPayments,
 } from "@/lib/tuition";
-import { sendWhatsAppMessage, fillReminderTemplate, DEFAULT_REMINDER_TEMPLATE } from "@/lib/whatsapp";
+import { sendWhatsAppTemplate, fillReminderTemplate, DEFAULT_REMINDER_TEMPLATE } from "@/lib/whatsapp";
 import { formatAmount } from "@/lib/format";
 import { getActiveStudentsWithSummary } from "@/lib/queries";
 import {
@@ -46,19 +46,18 @@ function pickTargetTranche(summary: ReturnType<typeof computeStudentSummary>, tr
   );
 }
 
-function buildMessage(
+function reminderVars(
   student: StudentWithPayments,
   schoolName: string,
   target: ReturnType<typeof pickTargetTranche>,
   summary: ReturnType<typeof computeStudentSummary>
 ) {
-  const template = student.class.reminderMessageTemplate || DEFAULT_REMINDER_TEMPLATE;
   // The template reads "la {tranche} de la scolarité". A tuition instalment
   // ("1re tranche") fits; the enrolment fee ("Frais d'inscription") does not
   // ("la Frais…"), so use the neutral phrase there.
   const trancheLabel =
     !target || target.tranche.kind === "registration" ? "part restante" : target.tranche.label;
-  return fillReminderTemplate(template, {
+  return {
     parent: student.parentName || "Parent",
     tranche: trancheLabel,
     eleve: `${student.firstName} ${student.lastName}`,
@@ -66,7 +65,7 @@ function buildMessage(
     montant: formatAmount(target ? target.remaining : summary.remaining),
     echeance: target ? target.tranche.dueDate.toLocaleDateString("fr-FR") : "dès que possible",
     ecole: schoolName,
-  });
+  };
 }
 
 export async function sendReminderForStudent(params: {
@@ -90,8 +89,22 @@ export async function sendReminderForStudent(params: {
   }
 
   const target = pickTargetTranche(summary, trancheId);
-  const message = buildMessage(student, schoolName, target, summary);
-  const result = await sendWhatsAppMessage(student.parentPhone, message);
+  const vars = reminderVars(student, schoolName, target, summary);
+  // The live send always uses the Meta-approved "rappel_paiement" template —
+  // WhatsApp rejects free-form business-initiated text outside a 24h customer
+  // session. The per-class custom wording (or the default) is kept only for
+  // the human-readable copy stored below, not for what's actually delivered.
+  const template = student.class.reminderMessageTemplate || DEFAULT_REMINDER_TEMPLATE;
+  const message = fillReminderTemplate(template, vars);
+  const result = await sendWhatsAppTemplate(student.parentPhone, "rappel_paiement", [
+    vars.parent,
+    vars.tranche,
+    vars.eleve,
+    vars.classe,
+    vars.montant,
+    vars.echeance,
+    vars.ecole,
+  ]);
 
   const reminder = await prisma.reminder.create({
     data: {

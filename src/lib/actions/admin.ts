@@ -7,7 +7,6 @@ import { prisma } from "@/lib/db";
 import { verifyAdmin } from "@/lib/admin-dal";
 import { createAdminSession, deleteAdminSession } from "@/lib/admin-session";
 import { normalizePhone } from "@/lib/validation";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
 
 export type AdminActionState = { error?: string; ok?: string } | undefined;
 
@@ -69,38 +68,6 @@ export async function deleteSchoolAction(schoolId: string, confirmName: string) 
 
   revalidatePath("/admin");
   return { ok: true };
-}
-
-export async function sendAdminMessageAction(schoolId: string, body: string) {
-  const admin = await verifyAdmin();
-  const school = await prisma.school.findUnique({
-    where: { id: schoolId },
-    select: { id: true, phone: true, contactName: true },
-  });
-  if (!school) return { error: "Établissement introuvable." };
-  if (!school.phone) return { error: "Cet établissement n'a pas de numéro de téléphone enregistré." };
-
-  const text = body.trim();
-  if (text.length < 2) return { error: "Le message est vide." };
-  if (text.length > 1000) return { error: "Message trop long (1000 caractères maximum)." };
-
-  const result = await sendWhatsAppMessage(school.phone, text);
-
-  await prisma.adminMessage.create({
-    data: {
-      adminId: admin.id,
-      schoolId: school.id,
-      channel: "whatsapp",
-      toPhone: school.phone,
-      body: text,
-      status: result.ok ? "sent" : "failed",
-    },
-  });
-
-  revalidatePath(`/admin/ecoles/${schoolId}`);
-  return result.ok
-    ? { ok: true, mode: result.mode }
-    : { error: result.error ?? "L'envoi a échoué." };
 }
 
 export async function resolveErrorAction(errorId: string, resolved: boolean) {

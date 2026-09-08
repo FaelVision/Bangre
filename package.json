@@ -3,12 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/sync-prisma-provider.mjs",
     "dev": "next dev",
     "build": "next build",
-    "postinstall": "prisma generate",
+    "postinstall": "node scripts/sync-prisma-provider.mjs && node scripts/prisma-generate-safe.mjs",
     "start": "next start",
     "lint": "eslint",
+    "pretest": "node scripts/sync-prisma-provider.mjs && node scripts/prisma-generate-safe.mjs",
     "test": "node --require ./tests/server-only-shim.cjs --import tsx --test tests/*.test.ts",
+    "pretest:integ": "node scripts/sync-prisma-provider.mjs && node scripts/prisma-generate-safe.mjs",
     "test:integ": "node --require ./tests/integration/setup.cjs --require ./tests/server-only-shim.cjs --import tsx --test tests/integration/*.test.ts",
     "db:seed": "tsx prisma/seed.ts",
     "admin:create": "tsx scripts/create-admin.ts"

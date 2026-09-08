@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button } from "@/components/ui";
-import { Field, Label, TextInput, Textarea } from "@/components/form";
-import { deleteSchoolAction, sendAdminMessageAction, setSchoolBlockedAction } from "@/lib/actions/admin";
+import { Field, Label, TextInput } from "@/components/form";
+import { deleteSchoolAction, setSchoolBlockedAction } from "@/lib/actions/admin";
 
 type Feedback = { tone: "ok" | "error"; text: string } | null;
 
@@ -28,34 +28,11 @@ export function SchoolActions({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [message, setMessage] = useState("");
-  const [messageFeedback, setMessageFeedback] = useState<Feedback>(null);
-
   const [reason, setReason] = useState(blockedReason ?? "");
   const [blockFeedback, setBlockFeedback] = useState<Feedback>(null);
 
   const [confirmName, setConfirmName] = useState("");
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback>(null);
-
-  function send() {
-    setMessageFeedback(null);
-    startTransition(async () => {
-      const res = await sendAdminMessageAction(schoolId, message);
-      if ("error" in res && res.error) {
-        setMessageFeedback({ tone: "error", text: res.error });
-        return;
-      }
-      const simulated = "mode" in res && res.mode === "mock";
-      setMessage("");
-      setMessageFeedback({
-        tone: "ok",
-        text: simulated
-          ? "Message enregistré. WhatsApp n'étant pas configuré, il n'a pas été réellement expédié."
-          : `Message envoyé à ${contactName}.`,
-      });
-      router.refresh();
-    });
-  }
 
   function toggleBlock() {
     const next = !blocked;
@@ -93,33 +70,6 @@ export function SchoolActions({
           <Row label="Téléphone" value={phone ?? "—"} mono />
           <Row label="E-mail" value={email ?? "—"} />
         </div>
-      </Card>
-
-      <Card>
-        <div className="text-[15px] font-semibold">Envoyer un message</div>
-        <div className="text-[12.5px] text-(--color-text-muted) mt-1 leading-relaxed">
-          Envoyé sur WhatsApp au {phone}. Utile pour une relance d&apos;abonnement ou une explication de blocage.
-        </div>
-        <div className="mt-3">
-          <Field>
-            <Label>Message</Label>
-            <Textarea
-              rows={5}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              maxLength={1000}
-              placeholder={`Bonjour ${contactName}, votre période d'essai se termine bientôt…`}
-              className="text-[13.5px]"
-            />
-          </Field>
-        </div>
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-[11.5px] text-(--color-text-muted) tabular-nums">{message.length}/1000</span>
-          <Button type="button" onClick={send} disabled={pending || message.trim().length < 2}>
-            {pending ? "Envoi…" : "Envoyer"}
-          </Button>
-        </div>
-        {messageFeedback && <Feedback feedback={messageFeedback} />}
       </Card>
 
       <Card className={blocked ? "border-(--color-success-border)" : "border-(--color-gold-border)"}>

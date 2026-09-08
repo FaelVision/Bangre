@@ -11,19 +11,31 @@ function isConfigured() {
   return Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
 }
 
+const TEMPLATE_LANGUAGE = "fr";
+
 /**
- * Sends a WhatsApp message via the Meta WhatsApp Cloud API.
+ * Sends a pre-approved WhatsApp Message Template via the Meta Cloud API.
  *
- * Falls back to a mock/dev mode when WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID
- * aren't set, so the reminder flow works end-to-end (recorded in the DB) without
- * live credentials. Wire real credentials in .env to send actual messages.
+ * WhatsApp only allows free-form text within 24h of the customer's last
+ * message; every message Bangre sends (reminders, payment confirmations,
+ * password reset links) is business-initiated, so it must go through an
+ * approved template instead of plain text. `params` are substituted in
+ * order for {{1}}, {{2}}… in the template body — see Meta Business Manager
+ * > WhatsApp Manager > Message Templates for the approved templates this
+ * app expects (category UTILITY, language fr): rappel_paiement,
+ * confirmation_paiement, reinitialisation_mdp.
+ *
+ * Falls back to mock/dev mode when WHATSAPP_TOKEN / WHATSAPP_PHONE_NUMBER_ID
+ * aren't set, so reminder/payment/reset flows work end-to-end without live
+ * credentials. Wire real values in .env to send actual messages.
  */
-export async function sendWhatsAppMessage(
+export async function sendWhatsAppTemplate(
   toPhoneE164: string,
-  message: string
+  templateName: string,
+  params: string[]
 ): Promise<WhatsAppSendResult> {
   if (!isConfigured()) {
-    console.log(`[whatsapp:mock] to=${toPhoneE164} message=${JSON.stringify(message)}`);
+    console.log(`[whatsapp:mock] to=${toPhoneE164} template=${templateName} params=${JSON.stringify(params)}`);
     return { ok: true, mode: "mock", providerMessageId: `mock-${Date.now()}` };
   }
 
@@ -39,8 +51,17 @@ export async function sendWhatsAppMessage(
         body: JSON.stringify({
           messaging_product: "whatsapp",
           to: toPhoneE164.replace(/\s+/g, ""),
-          type: "text",
-          text: { body: message },
+          type: "template",
+          template: {
+            name: templateName,
+            language: { code: TEMPLATE_LANGUAGE },
+            components: [
+              {
+                type: "body",
+                parameters: params.map((text) => ({ type: "text", text })),
+              },
+            ],
+          },
         }),
       }
     );
@@ -54,6 +75,7 @@ export async function sendWhatsAppMessage(
   }
 }
 
+/** Substitutes the named placeholders in a human-readable copy of a reminder — kept for the on-screen/stored history text, independent of the {{1}}, {{2}}… order sent to the live WhatsApp template. */
 export function fillReminderTemplate(
   template: string,
   vars: {

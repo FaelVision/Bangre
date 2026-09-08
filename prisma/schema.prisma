@@ -2,8 +2,14 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// `provider` below is rewritten locally by scripts/sync-prisma-provider.mjs
+// (runs on `predev`/`postinstall`/`pretest`) to match DATABASE_URL — sqlite
+// for the local file:./dev.db, postgresql in production. If `git status`
+// shows this file modified after running the app locally, that's why: keep
+// it committed as "postgresql" (the deployed value), never commit the
+// sqlite swap.
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

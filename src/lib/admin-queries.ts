@@ -121,7 +121,6 @@ export const getSchoolDetail = cache(async (schoolId: string) => {
     include: {
       _count: { select: { classes: true, students: true, payments: true, reminders: true } },
       subscriptionPayments: { orderBy: { createdAt: "desc" }, take: 20 },
-      adminMessages: { orderBy: { createdAt: "desc" }, take: 20, include: { admin: { select: { name: true } } } },
       academicYears: { orderBy: { createdAt: "desc" }, select: { label: true, isCurrent: true } },
       errorLogs: { orderBy: { lastSeenAt: "desc" }, take: 5 },
     },

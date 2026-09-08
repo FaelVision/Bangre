@@ -16,7 +16,6 @@ import {
   parseIdentifier,
 } from "@/lib/validation";
 import { currentAcademicYearLabel } from "@/lib/promotion";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
 import { sendEmail } from "@/lib/mailer";
 
 export type AuthActionState = { error?: string } | undefined;
@@ -195,14 +194,19 @@ export async function forgotPasswordAction(
 
   const origin = await requestOrigin();
   const resetUrl = `${origin}/reinitialiser-mot-de-passe?token=${rawToken}`;
-  const message = `Bonjour ${school.contactName}, voici votre lien de réinitialisation du mot de passe Bangre (valable 1h) : ${resetUrl}`;
 
-  const result =
-    identity.kind === "phone" && school.phone
-      ? await sendWhatsAppMessage(school.phone, message)
-      : school.email
-        ? await sendEmail(school.email, "Réinitialisation de votre mot de passe Bangre", message)
-        : { ok: false, mode: "mock" as const };
+  // WhatsApp isn't used here: a reset link + expiry reads as an authentication
+  // flow to Meta's template classifier, which requires the (unavailable, and
+  // much more disruptive to adopt — OTP code instead of a link) Authentication
+  // template category. E-mail is the only delivery channel for password
+  // resets until that's revisited.
+  const result = school.email
+    ? await sendEmail(
+        school.email,
+        "Réinitialisation de votre mot de passe Bangre",
+        `Bonjour ${school.contactName}, voici votre lien de réinitialisation du mot de passe Bangre (valable 1h) : ${resetUrl}`
+      )
+    : { ok: false, mode: "mock" as const };
 
   // The mock link is a dev convenience only: revealing it in production would let
   // anyone type in a registered phone/email and get a live reset link back.

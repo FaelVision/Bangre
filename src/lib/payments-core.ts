@@ -6,7 +6,7 @@ import {
   studentQueryInclude,
   type StudentWithPayments,
 } from "@/lib/tuition";
-import { sendWhatsAppMessage } from "@/lib/whatsapp";
+import { sendWhatsAppTemplate } from "@/lib/whatsapp";
 import { formatCFA, formatDate } from "@/lib/format";
 
 export type RecordPaymentInput = {
@@ -86,7 +86,7 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
         allocations: { create: allocations },
       },
     });
-    return { paymentId: payment.id, receiptNumber: payment.receiptNumber };
+    return { paymentId: payment.id, receiptNumber: payment.receiptNumber, schoolName: school.name };
   });
 
   if (input.notifyWhatsapp && student.parentPhone) {
@@ -100,8 +100,15 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
     const remainingAfter = refreshed
       ? computeStudentSummary(refreshed).remaining
       : Math.max(0, student.class.tuitionAmount ?? 0);
-    const message = `Bonjour, nous confirmons la réception de ${formatCFA(amount)} pour la scolarité de ${student.firstName} ${student.lastName} (${student.class.name}) le ${formatDate(date)}. Reste à payer : ${formatCFA(remainingAfter)}. Merci. — Reçu N° ${result.receiptNumber}`;
-    await sendWhatsAppMessage(student.parentPhone, message);
+    await sendWhatsAppTemplate(student.parentPhone, "confirmation_paiement", [
+      formatCFA(amount),
+      `${student.firstName} ${student.lastName}`,
+      student.class.name,
+      formatDate(date),
+      formatCFA(remainingAfter),
+      result.schoolName,
+      String(result.receiptNumber),
+    ]);
     await prisma.payment.update({ where: { id: result.paymentId }, data: { whatsappNotified: true } });
   }
 

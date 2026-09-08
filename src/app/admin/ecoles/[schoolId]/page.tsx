@@ -114,25 +114,6 @@ export default async function AdminSchoolPage({ params }: { params: Promise<{ sc
             </Card>
           )}
 
-          <Card>
-            <div className="text-[15px] font-semibold">Messages envoyés au responsable</div>
-            {school.adminMessages.length === 0 && (
-              <div className="text-[13px] text-(--color-text-muted) py-2 mt-1">Aucun message envoyé.</div>
-            )}
-            <div className="grid gap-3 mt-3">
-              {school.adminMessages.map((m) => (
-                <div key={m.id} className="border border-(--color-border) rounded-[11px] px-3.5 py-3 bg-(--color-bg-subtle)">
-                  <div className="text-[13px] leading-relaxed whitespace-pre-wrap">{m.body}</div>
-                  <div className="text-[11.5px] text-(--color-text-muted) mt-2">
-                    {formatDateTime(m.createdAt)} · par {m.admin.name} · vers {m.toPhone} ·{" "}
-                    <span className={m.status === "sent" ? "text-(--color-success-text)" : "text-(--color-danger-text)"}>
-                      {m.status === "sent" ? "envoyé" : "échec"}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
         </div>
 
         <SchoolActions

@@ -228,8 +228,11 @@ test("persistPayment: WhatsApp confirmation 'reste à payer' accounts for the en
     console.log = orig;
   }
   const msg = logs.find((l) => l.includes("[whatsapp:mock]")) ?? "";
-  assert.match(msg, /Reste à payer/);
-  assert.doesNotMatch(msg, /Reste à payer\s*:\s*0\s*CFA/, `enrolment fee ${regFee} should still be reported as due — got: ${msg}`);
+  assert.match(msg, /template=confirmation_paiement/, `expected a confirmation_paiement send — got: ${msg}`);
+  // params: [montant, élève, classe, date, resteAPayer, école, reçu] — see payments-core.ts.
+  const params = JSON.parse(msg.match(/params=(\[.*\])$/)?.[1] ?? "[]") as string[];
+  const remaining = params[4];
+  assert.notEqual(remaining, "0 CFA", `enrolment fee ${regFee} should still be reported as due — got: ${msg}`);
 });
 
 // ---------------------------------------------------------------------------
