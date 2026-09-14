@@ -5,6 +5,7 @@ import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { AdminShell } from "@/components/admin-shell";
 import { Card, Badge } from "@/components/ui";
 import { PaymentDecisionButtons } from "@/components/payment-decision-buttons";
+import { PermanentButton, PermanentBadge } from "@/components/permanent-button";
 import { StateBadge } from "./state-badge";
 
 const FILTERS = [
@@ -84,7 +85,7 @@ export default async function AdminHomePage({
           <input
             name="q"
             defaultValue={q}
-            placeholder="Rechercher un établissement, un responsable, un numéro…"
+            placeholder="Rechercher par nom d'établissement, nom/prénom du responsable, numéro…"
             className="w-full h-10 border border-(--color-border-strong) rounded-[10px] bg-white px-3.5 text-[13.5px] placeholder:text-(--color-text-placeholder) focus:outline-none focus:border-(--color-primary)"
           />
         </form>
@@ -114,7 +115,7 @@ export default async function AdminHomePage({
       </div>
 
       <div className="mt-3.5 bg-white border border-(--color-border) rounded-2xl overflow-x-auto">
-        <table className="w-full" style={{ minWidth: 900 }}>
+        <table className="w-full" style={{ minWidth: 1050 }}>
           <thead>
             <tr className="bg-(--color-bg-subtle)">
               <Th>Établissement</Th>
@@ -124,6 +125,7 @@ export default async function AdminHomePage({
               <Th align="right">Élèves</Th>
               <Th align="right">Encaissé (abo.)</Th>
               <Th align="right">Inscrit le</Th>
+              <Th align="right">Accès</Th>
             </tr>
           </thead>
           <tbody>
@@ -132,7 +134,7 @@ export default async function AdminHomePage({
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center text-(--color-text-muted) py-10 text-sm">
+                <td colSpan={8} className="text-center text-(--color-text-muted) py-10 text-sm">
                   Aucun établissement ne correspond.
                 </td>
               </tr>
@@ -194,6 +196,9 @@ function SchoolLine({ row, zebra }: { row: SchoolRow; zebra: boolean }) {
       </Td>
       <Td align="right" className="tabular-nums">{formatAmount(row.paidTotal)}</Td>
       <Td align="right" className="tabular-nums text-(--color-text-muted)">{formatDate(row.createdAt)}</Td>
+      <Td align="right">
+        {row.permanent ? <PermanentBadge /> : <PermanentButton schoolId={row.id} schoolName={row.name} />}
+      </Td>
     </tr>
   );
 }

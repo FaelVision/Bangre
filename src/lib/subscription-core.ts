@@ -4,6 +4,15 @@ import { getPlan, planForAmount } from "@/lib/plans";
 
 const PROVIDERS = new Set(["orange_money", "moov_money"]);
 
+// Sentinel renewal date used to mark a small number of hand-picked accounts
+// (platform team, partners) as never expiring, without adding a separate
+// schema flag — any date this far out is functionally "never" for the app.
+export const PERMANENT_RENEWAL_DATE = new Date("2099-12-31T00:00:00.000Z");
+
+export function isPermanentRenewal(date: Date | null) {
+  return !!date && date.getFullYear() >= 2098;
+}
+
 export type RecordSubscriptionPaymentInput = {
   provider: string;
   phone: string;

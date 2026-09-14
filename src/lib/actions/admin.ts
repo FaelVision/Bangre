@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { verifyAdmin } from "@/lib/admin-dal";
 import { createAdminSession, deleteAdminSession } from "@/lib/admin-session";
 import { normalizePhone } from "@/lib/validation";
-import { confirmSubscriptionPayment, rejectSubscriptionPayment } from "@/lib/subscription-core";
+import { confirmSubscriptionPayment, rejectSubscriptionPayment, PERMANENT_RENEWAL_DATE } from "@/lib/subscription-core";
 
 export type AdminActionState = { error?: string; ok?: string } | undefined;
 
@@ -51,12 +51,6 @@ export async function setSchoolBlockedAction(schoolId: string, blocked: boolean,
   revalidatePath(`/admin/ecoles/${schoolId}`);
   return { ok: true };
 }
-
-// Sentinel renewal date used to mark a small number of hand-picked accounts
-// (platform team, partners) as never expiring, without adding a separate
-// schema flag. `hasCurrentSubscription` treats any future date as active, so
-// this simply never lapses.
-const PERMANENT_RENEWAL_DATE = new Date("2099-12-31T00:00:00.000Z");
 
 export async function setSchoolPermanentAction(schoolId: string) {
   await verifyAdmin();

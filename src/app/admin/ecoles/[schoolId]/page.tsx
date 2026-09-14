@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { verifyAdmin } from "@/lib/admin-dal";
 import { getSchoolDetail, getAdminOverview } from "@/lib/admin-queries";
+import { isPermanentRenewal } from "@/lib/subscription-core";
 import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { AdminShell } from "@/components/admin-shell";
 import { Card } from "@/components/ui";
@@ -131,7 +132,7 @@ export default async function AdminSchoolPage({ params }: { params: Promise<{ sc
           email={school.email}
           blocked={school.blocked}
           blockedReason={school.blockedReason}
-          permanent={school.subscriptionStatus === "active" && (school.subscriptionRenewsAt?.getFullYear() ?? 0) >= 2098}
+          permanent={school.subscriptionStatus === "active" && isPermanentRenewal(school.subscriptionRenewsAt)}
         />
       </div>
     </AdminShell>

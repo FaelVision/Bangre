@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
+import { isPermanentRenewal } from "@/lib/subscription-core";
 
 export type SubscriptionState = "active" | "trial" | "expired" | "blocked";
 
@@ -21,6 +22,7 @@ export type SchoolRow = {
   daysLeft: number | null;
   renewsAt: Date | null;
   trialEndsAt: Date | null;
+  permanent: boolean;
   counts: { classes: number; students: number; payments: number };
   paidTotal: number;
   lastPaymentAt: Date | null;
@@ -78,6 +80,7 @@ export const getAdminOverview = cache(async () => {
       daysLeft: daysFromNow(reference, now),
       renewsAt: s.subscriptionRenewsAt,
       trialEndsAt: s.trialEndsAt,
+      permanent: state === "active" && isPermanentRenewal(s.subscriptionRenewsAt),
       counts: { classes: s._count.classes, students: s._count.students, payments: s._count.payments },
       paidTotal: s.subscriptionPayments.reduce((sum, p) => sum + p.amount, 0),
       lastPaymentAt: s.subscriptionPayments[0]?.createdAt ?? null,
