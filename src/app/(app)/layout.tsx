@@ -1,8 +1,12 @@
-import { requireActiveSubscription, getCurrentAcademicYear, verifySession } from "@/lib/dal";
+import { requireActiveSubscription, getCurrentAcademicYear, verifySession, hasCurrentSubscription } from "@/lib/dal";
 import { getSidebarCounts } from "@/lib/queries";
+import { daysUntil, formatDate } from "@/lib/format";
 import { AppShell } from "@/components/app-shell";
 import { PaymentModalProvider } from "@/components/payment-modal-context";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { SubscriptionExpiryAlert } from "@/components/subscription-expiry-alert";
+
+const EXPIRY_ALERT_THRESHOLD_DAYS = 7;
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { schoolId } = await verifySession();
@@ -17,6 +21,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .slice(0, 2)
     .toUpperCase();
 
+  // Whichever date currently governs access — the trial end date, or the paid
+  // renewal date once a subscription is active — is the one worth warning about.
+  const isActive = hasCurrentSubscription(school);
+  const expiryDate = isActive ? school.subscriptionRenewsAt : school.trialEndsAt;
+  const daysLeft = expiryDate ? daysUntil(expiryDate) : null;
+
   return (
     <PaymentModalProvider>
       <AppShell
@@ -29,6 +39,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
         <ServiceWorkerRegister />
       </AppShell>
+      {daysLeft !== null && daysLeft <= EXPIRY_ALERT_THRESHOLD_DAYS && (
+        <SubscriptionExpiryAlert daysLeft={daysLeft} isTrial={!isActive} untilLabel={formatDate(expiryDate)} />
+      )}
     </PaymentModalProvider>
   );
 }
