@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { verifyAdmin } from "@/lib/admin-dal";
-import { getAdminOverview, type SchoolRow } from "@/lib/admin-queries";
-import { formatAmount, formatDate } from "@/lib/format";
+import { getAdminOverview, getPendingSubscriptionPayments, type SchoolRow, type PendingPayment } from "@/lib/admin-queries";
+import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { AdminShell } from "@/components/admin-shell";
-import { Card } from "@/components/ui";
+import { Card, Badge } from "@/components/ui";
+import { PaymentDecisionButtons } from "@/components/payment-decision-buttons";
 import { StateBadge } from "./state-badge";
 
 const FILTERS = [
@@ -21,7 +22,10 @@ export default async function AdminHomePage({
 }) {
   const admin = await verifyAdmin();
   const { etat, q } = await searchParams;
-  const { rows, stats } = await getAdminOverview();
+  const [{ rows, stats }, pendingPayments] = await Promise.all([
+    getAdminOverview(),
+    getPendingSubscriptionPayments(),
+  ]);
 
   const filtered = rows.filter((r) => {
     if (etat && r.state !== etat) return false;
@@ -55,6 +59,24 @@ export default async function AdminHomePage({
           tone={stats.expired + stats.blocked > 0 ? "danger" : undefined}
         />
       </div>
+
+      {pendingPayments.length > 0 && (
+        <Card className="mt-4 border-(--color-gold-border)">
+          <div className="flex items-center gap-2.5">
+            <div className="text-[15px] font-semibold">Paiements en attente de confirmation</div>
+            <Badge tone="gold">{pendingPayments.length}</Badge>
+          </div>
+          <div className="text-[12.5px] text-(--color-text-muted) mt-1 leading-relaxed">
+            L&apos;établissement affirme avoir envoyé ce paiement par Mobile Money. Vérifiez la réception sur votre
+            compte avant de confirmer — cela active ou prolonge l&apos;abonnement immédiatement.
+          </div>
+          <div className="grid gap-2 mt-3.5">
+            {pendingPayments.map((p) => (
+              <PendingPaymentRow key={p.id} payment={p} />
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2.5">
         <form action="/admin" className="flex-1 min-w-[200px]">
@@ -173,6 +195,26 @@ function SchoolLine({ row, zebra }: { row: SchoolRow; zebra: boolean }) {
       <Td align="right" className="tabular-nums">{formatAmount(row.paidTotal)}</Td>
       <Td align="right" className="tabular-nums text-(--color-text-muted)">{formatDate(row.createdAt)}</Td>
     </tr>
+  );
+}
+
+function PendingPaymentRow({ payment }: { payment: PendingPayment }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border border-(--color-border-row) rounded-xl px-3.5 py-2.5">
+      <div className="flex-1 min-w-[220px]">
+        <Link
+          href={`/admin/ecoles/${payment.schoolId}`}
+          className="font-semibold text-(--color-text) no-underline hover:underline"
+        >
+          {payment.schoolName}
+        </Link>
+        <div className="text-[12px] text-(--color-text-muted) tabular-nums">
+          {formatAmount(payment.amount)} CFA · {payment.provider === "orange_money" ? "Orange Money" : "Moov Money"} ·{" "}
+          {payment.phone} · {formatDateTime(payment.createdAt)}
+        </div>
+      </div>
+      <PaymentDecisionButtons paymentId={payment.id} />
+    </div>
   );
 }
 

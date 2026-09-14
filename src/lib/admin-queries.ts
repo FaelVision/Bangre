@@ -114,6 +114,34 @@ export const getAdminOverview = cache(async () => {
   };
 });
 
+export type PendingPayment = {
+  id: string;
+  schoolId: string;
+  schoolName: string;
+  amount: number;
+  provider: string;
+  phone: string;
+  createdAt: Date;
+};
+
+/** Payments a school says it sent, waiting for an admin to check the Mobile Money account and confirm. */
+export const getPendingSubscriptionPayments = cache(async (): Promise<PendingPayment[]> => {
+  const payments = await prisma.subscriptionPayment.findMany({
+    where: { status: "pending" },
+    orderBy: { createdAt: "asc" },
+    include: { school: { select: { id: true, name: true } } },
+  });
+  return payments.map((p) => ({
+    id: p.id,
+    schoolId: p.school.id,
+    schoolName: p.school.name,
+    amount: p.amount,
+    provider: p.provider,
+    phone: p.phone,
+    createdAt: p.createdAt,
+  }));
+});
+
 export const getSchoolDetail = cache(async (schoolId: string) => {
   const now = new Date();
   const school = await prisma.school.findUnique({

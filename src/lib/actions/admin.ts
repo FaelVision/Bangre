@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { verifyAdmin } from "@/lib/admin-dal";
 import { createAdminSession, deleteAdminSession } from "@/lib/admin-session";
 import { normalizePhone } from "@/lib/validation";
+import { confirmSubscriptionPayment, rejectSubscriptionPayment } from "@/lib/subscription-core";
 
 export type AdminActionState = { error?: string; ok?: string } | undefined;
 
@@ -67,6 +68,26 @@ export async function deleteSchoolAction(schoolId: string, confirmName: string) 
   await prisma.school.delete({ where: { id: schoolId } });
 
   revalidatePath("/admin");
+  return { ok: true };
+}
+
+export async function confirmSubscriptionPaymentAction(paymentId: string) {
+  await verifyAdmin();
+  const result = await confirmSubscriptionPayment(paymentId);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/admin");
+  revalidatePath(`/admin/ecoles/${result.schoolId}`);
+  return { ok: true };
+}
+
+export async function rejectSubscriptionPaymentAction(paymentId: string) {
+  await verifyAdmin();
+  const result = await rejectSubscriptionPayment(paymentId);
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/admin");
+  revalidatePath(`/admin/ecoles/${result.schoolId}`);
   return { ok: true };
 }
 

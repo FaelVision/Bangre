@@ -146,7 +146,8 @@ export function SubscriptionForm({ defaultPhone }: { defaultPhone: string }) {
       </div>
       <div className="text-[11.5px] text-(--color-text-muted) mt-1.5 leading-relaxed">
         « Composer » ouvre le clavier d&apos;appel avec le code déjà rempli (numéro et montant pour Orange Money ;
-        code de base pour Moov Money, à compléter dans le menu affiché). Fonctionne depuis un téléphone.
+        code de base pour Moov Money, à compléter dans le menu affiché). Fonctionne depuis un téléphone. Une fois
+        l&apos;envoi validé sur votre téléphone, indiquez-le ci-dessous.
       </div>
 
       <Field>
@@ -159,10 +160,11 @@ export function SubscriptionForm({ defaultPhone }: { defaultPhone: string }) {
       {state?.error && <div className="text-[13px] text-(--color-danger-text) mt-3">{state.error}</div>}
 
       <Button type="submit" size="lg" className="w-full mt-5" disabled={pending}>
-        {pending ? "Paiement en cours…" : `Payer ${formatAmount(selectedPlan.amount)} CFA`}
+        {pending ? "Enregistrement…" : `J'ai envoyé ${formatAmount(selectedPlan.amount)} CFA`}
       </Button>
       <div className="text-[12.5px] text-(--color-text-muted) text-center mt-3">
-        Vous recevrez un code USSD sur ce numéro pour valider.
+        Nous vérifions la réception sur notre compte Mobile Money et confirmons votre abonnement sous quelques
+        heures.
       </div>
     </form>
   );

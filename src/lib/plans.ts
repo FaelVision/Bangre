@@ -22,6 +22,11 @@ export function getPlan(id: string | null | undefined): Plan {
   return id === "yearly" ? PLANS.yearly : PLANS.monthly;
 }
 
+/** Recovers which plan a stored payment amount corresponds to (admin confirmation has no plan id, only the amount charged). */
+export function planForAmount(amount: number): Plan {
+  return PLAN_LIST.find((p) => p.amount === amount) ?? PLANS.monthly;
+}
+
 /** Months paid for free by taking the yearly plan instead of 12 monthly ones. */
 export function yearlySavings() {
   const twelveMonths = PLANS.monthly.amount * 12;

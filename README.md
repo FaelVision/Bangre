@@ -29,12 +29,10 @@ Connexion de démonstration :
 
 ## Intégrations WhatsApp / Mobile Money
 
-`src/lib/whatsapp.ts` et `src/lib/mobilemoney.ts` implémentent l'appel réel à l'API (WhatsApp Cloud API pour les rappels, Orange Money / Moov Money pour l'abonnement), mais **tombent en mode simulation** tant que les identifiants correspondants ne sont pas renseignés dans `.env` :
+Aucune des deux ne passe par une API métier — volontairement, pour ne dépendre d'aucun compte marchand ni d'API Business :
 
-- Sans `WHATSAPP_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` : les rappels et confirmations de paiement sont enregistrés en base et journalisés dans la console, sans appel réseau.
-- Sans les identifiants Orange/Moov Money : le paiement de l'abonnement (5000 CFA/mois) est auto-approuvé, comme si l'USSD avait été validé.
-
-Cela permet de faire fonctionner tout le flux de bout en bout sans compte marchand, et de brancher les vrais identifiants plus tard sans changer le reste du code.
+- **WhatsApp** (`src/lib/whatsapp.ts`) : rappels et confirmations de paiement sont des liens `wa.me` pré-remplis, ouverts et envoyés manuellement par l'utilisateur depuis son propre WhatsApp.
+- **Mobile Money (abonnement)** : l'établissement envoie lui-même la cotisation (Orange Money / Moov Money) vers le numéro Bangre affiché sur `/abonnement` — le bouton « Composer » ouvre le clavier d'appel avec le code USSD pré-rempli. Le paiement est enregistré comme **en attente**, et un administrateur le confirme manuellement depuis `/admin` une fois la réception vérifiée sur le compte Mobile Money (`src/lib/subscription-core.ts` : `recordSubscriptionPayment` / `confirmSubscriptionPayment` / `rejectSubscriptionPayment`) — c'est seulement cette confirmation qui active ou prolonge l'abonnement.
 
 ### Rappels automatiques
 

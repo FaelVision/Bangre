@@ -13,7 +13,8 @@ import { createStudent, updateStudent } from "../../src/lib/students-core";
 import { persistPayment } from "../../src/lib/payments-core";
 import { previewReminder, recordReminderSent } from "../../src/lib/reminders-core";
 import { computeStudentSummary, studentQueryInclude, type StudentWithPayments } from "../../src/lib/tuition";
-import { chargeMobileMoney } from "../../src/lib/mobilemoney";
+import { recordSubscriptionPayment, confirmSubscriptionPayment, rejectSubscriptionPayment } from "../../src/lib/subscription-core";
+import { PLANS } from "../../src/lib/plans";
 
 let schoolId: string;
 let classWithTuitionId: string;
@@ -283,10 +284,46 @@ test("recordReminderSent: records the (possibly edited) final text, not a recomp
 // Subscription
 // ---------------------------------------------------------------------------
 
-test("chargeMobileMoney: mock mode auto-approves", async () => {
-  const res = await chargeMobileMoney("orange_money", "+22670000000", 5000);
-  assert.equal(res.ok, true);
-  assert.equal(res.mode, "mock");
+test("subscription: recording a payment never activates it — only an admin confirming does", async () => {
+  const recorded = await recordSubscriptionPayment(schoolId, {
+    provider: "orange_money",
+    phone: "+22670000000",
+    planId: "monthly",
+  });
+  assert.equal(recorded.ok, true);
+  if (!recorded.ok) return;
+
+  const pending = await prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: recorded.paymentId } });
+  assert.equal(pending.status, "pending");
+  assert.equal(pending.amount, PLANS.monthly.amount);
+
+  const confirmed = await confirmSubscriptionPayment(recorded.paymentId);
+  assert.equal(confirmed.ok, true);
+
+  const afterConfirm = await prisma.school.findUniqueOrThrow({ where: { id: schoolId } });
+  assert.equal(afterConfirm.subscriptionStatus, "active");
+  assert.ok(afterConfirm.subscriptionRenewsAt && afterConfirm.subscriptionRenewsAt.getTime() > Date.now());
+
+  // A payment is applied at most once.
+  const doubleConfirm = await confirmSubscriptionPayment(recorded.paymentId);
+  assert.equal(doubleConfirm.ok, false);
+
+  // Rejecting a payment marks it failed and never touches the subscription.
+  const second = await recordSubscriptionPayment(schoolId, {
+    provider: "moov_money",
+    phone: "+22670000001",
+    planId: "yearly",
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  const rejected = await rejectSubscriptionPayment(second.paymentId);
+  assert.equal(rejected.ok, true);
+
+  const rejectedPayment = await prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: second.paymentId } });
+  assert.equal(rejectedPayment.status, "failed");
+
+  const afterReject = await prisma.school.findUniqueOrThrow({ where: { id: schoolId } });
+  assert.equal(afterReject.subscriptionRenewsAt?.getTime(), afterConfirm.subscriptionRenewsAt?.getTime());
 });
 
 test("teardown", async () => {

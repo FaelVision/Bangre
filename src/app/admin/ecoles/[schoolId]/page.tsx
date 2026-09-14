@@ -5,6 +5,7 @@ import { getSchoolDetail, getAdminOverview } from "@/lib/admin-queries";
 import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { AdminShell } from "@/components/admin-shell";
 import { Card } from "@/components/ui";
+import { PaymentDecisionButtons } from "@/components/payment-decision-buttons";
 import { StateBadge } from "../../state-badge";
 import { SchoolActions } from "./school-actions";
 
@@ -70,16 +71,22 @@ export default async function AdminSchoolPage({ params }: { params: Promise<{ sc
               <div className="text-[13px] text-(--color-text-muted) py-2">Aucun paiement enregistré.</div>
             )}
             {school.subscriptionPayments.map((p) => (
-              <div key={p.id} className="flex justify-between items-center py-2 border-b border-(--color-border-row) last:border-b-0">
+              <div key={p.id} className="flex justify-between items-center gap-3 py-2 border-b border-(--color-border-row) last:border-b-0">
                 <div>
                   <div className="text-[13.5px] font-medium tabular-nums">{formatAmount(p.amount)} CFA</div>
                   <div className="text-[12px] text-(--color-text-muted)">
-                    {p.provider === "orange_money" ? "Orange Money" : "Moov Money"} · {formatDateTime(p.createdAt)}
+                    {p.provider === "orange_money" ? "Orange Money" : "Moov Money"} · {p.phone} · {formatDateTime(p.createdAt)}
                   </div>
                 </div>
-                <span className={`text-[12px] font-semibold ${p.status === "success" ? "text-(--color-success-text)" : "text-(--color-danger-text)"}`}>
-                  {p.status === "success" ? "Réussi" : p.status === "pending" ? "En attente" : "Échoué"}
-                </span>
+                {p.status === "pending" ? (
+                  <PaymentDecisionButtons paymentId={p.id} />
+                ) : (
+                  <span
+                    className={`text-[12px] font-semibold shrink-0 ${p.status === "success" ? "text-(--color-success-text)" : "text-(--color-danger-text)"}`}
+                  >
+                    {p.status === "success" ? "Réussi" : "Échoué"}
+                  </span>
+                )}
               </div>
             ))}
           </Card>

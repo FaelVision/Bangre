@@ -1,5 +1,6 @@
+import { prisma } from "@/lib/db";
 import { getCurrentSchool, hasCurrentSubscription } from "@/lib/dal";
-import { formatDate, daysUntil, formatAmount } from "@/lib/format";
+import { formatDate, formatDateTime, daysUntil, formatAmount } from "@/lib/format";
 import { continueTrialAction } from "@/lib/actions/subscription";
 import { PLANS } from "@/lib/plans";
 import { SubscriptionForm } from "./subscription-form";
@@ -8,6 +9,10 @@ export default async function AbonnementPage() {
   const school = await getCurrentSchool();
   const isActive = hasCurrentSubscription(school);
   const daysLeft = school.trialEndsAt ? daysUntil(school.trialEndsAt) : 0;
+  const pendingPayment = await prisma.subscriptionPayment.findFirst({
+    where: { schoolId: school.id, status: "pending" },
+    orderBy: { createdAt: "desc" },
+  });
 
   return (
     <div>
@@ -38,6 +43,18 @@ export default async function AbonnementPage() {
           </div>
         </div>
       </div>
+
+      {pendingPayment && (
+        <div className="border border-(--color-gold-border) bg-(--color-gold-bg) rounded-2xl p-4 mt-4">
+          <div className="text-[13.5px] font-semibold">Paiement en attente de confirmation</div>
+          <div className="text-[12.5px] text-(--color-text-muted) mt-1 leading-relaxed">
+            {formatAmount(pendingPayment.amount)} CFA envoyé le {formatDateTime(pendingPayment.createdAt)} par{" "}
+            {pendingPayment.provider === "orange_money" ? "Orange Money" : "Moov Money"}. Nous vérifions la réception
+            et confirmons sous peu — l&apos;abonnement s&apos;active automatiquement dès la confirmation, sans action
+            de votre part.
+          </div>
+        </div>
+      )}
 
       {!isActive && (
         <>
