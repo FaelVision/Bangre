@@ -90,11 +90,13 @@ export const getAdminOverview = cache(async () => {
   const byState = (state: SubscriptionState) => rows.filter((r) => r.state === state).length;
 
   // Monthly recurring revenue: a yearly plan counts as its per-month share.
-  const activeRows = rows.filter((r) => r.state === "active");
+  // A school with no recorded payment at all — a permanent/free account made
+  // active by an admin rather than by paying — contributes nothing: it isn't
+  // assumed to be on the monthly plan just because it's "active".
+  const activeRows = rows.filter((r) => r.state === "active" && r.paidTotal > 0);
   const yearlyShare = Math.round(PLANS.yearly.amount / 12);
   const mrr = activeRows.reduce((sum, r) => {
-    const lastAmount = r.paidTotal > 0 ? r.paidTotal : 0;
-    return sum + (lastAmount >= PLANS.yearly.amount ? yearlyShare : PLANS.monthly.amount);
+    return sum + (r.paidTotal >= PLANS.yearly.amount ? yearlyShare : PLANS.monthly.amount);
   }, 0);
 
   const openErrors = await prisma.errorLog.count({ where: { resolvedAt: null } });
