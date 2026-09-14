@@ -131,6 +131,7 @@ export default async function AdminSchoolPage({ params }: { params: Promise<{ sc
           email={school.email}
           blocked={school.blocked}
           blockedReason={school.blockedReason}
+          permanent={school.subscriptionStatus === "active" && (school.subscriptionRenewsAt?.getFullYear() ?? 0) >= 2098}
         />
       </div>
     </AdminShell>

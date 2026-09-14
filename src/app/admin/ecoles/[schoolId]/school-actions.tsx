@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, Button } from "@/components/ui";
 import { Field, Label, TextInput } from "@/components/form";
-import { deleteSchoolAction, setSchoolBlockedAction } from "@/lib/actions/admin";
+import { deleteSchoolAction, setSchoolBlockedAction, setSchoolPermanentAction } from "@/lib/actions/admin";
 
 type Feedback = { tone: "ok" | "error"; text: string } | null;
 
@@ -16,6 +16,7 @@ export function SchoolActions({
   email,
   blocked,
   blockedReason,
+  permanent,
 }: {
   schoolId: string;
   schoolName: string;
@@ -24,6 +25,7 @@ export function SchoolActions({
   email: string | null;
   blocked: boolean;
   blockedReason: string | null;
+  permanent: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -33,6 +35,21 @@ export function SchoolActions({
 
   const [confirmName, setConfirmName] = useState("");
   const [deleteFeedback, setDeleteFeedback] = useState<Feedback>(null);
+
+  const [permanentFeedback, setPermanentFeedback] = useState<Feedback>(null);
+
+  function makePermanent() {
+    if (!confirm(`Rendre l'accès de « ${schoolName} » permanent (abonnement toujours actif, sans échéance) ?`)) return;
+    setPermanentFeedback(null);
+    startTransition(async () => {
+      const res = await setSchoolPermanentAction(schoolId);
+      if (res && "error" in res && res.error) {
+        setPermanentFeedback({ tone: "error", text: res.error });
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function toggleBlock() {
     const next = !blocked;
@@ -71,6 +88,27 @@ export function SchoolActions({
           <Row label="E-mail" value={email ?? "—"} />
         </div>
       </Card>
+
+      {permanent ? (
+        <Card className="border-(--color-success-border)">
+          <div className="text-[15px] font-semibold">Compte permanent</div>
+          <div className="text-[12.5px] text-(--color-text-muted) mt-1 leading-relaxed">
+            Cet établissement a un accès permanent, sans échéance d&apos;abonnement.
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <div className="text-[15px] font-semibold">Rendre l&apos;accès permanent</div>
+          <div className="text-[12.5px] text-(--color-text-muted) mt-1 leading-relaxed">
+            Passe le compte en abonné actif sans date de renouvellement — utile pour les comptes de l&apos;équipe ou de
+            partenaires qui ne doivent jamais voir l&apos;alerte d&apos;expiration ni être bloqués.
+          </div>
+          <Button type="button" variant="secondary" onClick={makePermanent} disabled={pending} className="w-full mt-3.5">
+            {pending ? "…" : "Rendre permanent"}
+          </Button>
+          {permanentFeedback && <Feedback feedback={permanentFeedback} />}
+        </Card>
+      )}
 
       <Card className={blocked ? "border-(--color-success-border)" : "border-(--color-gold-border)"}>
         <div className="text-[15px] font-semibold">{blocked ? "Débloquer le compte" : "Bloquer le compte"}</div>

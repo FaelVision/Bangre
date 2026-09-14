@@ -52,6 +52,27 @@ export async function setSchoolBlockedAction(schoolId: string, blocked: boolean,
   return { ok: true };
 }
 
+// Sentinel renewal date used to mark a small number of hand-picked accounts
+// (platform team, partners) as never expiring, without adding a separate
+// schema flag. `hasCurrentSubscription` treats any future date as active, so
+// this simply never lapses.
+const PERMANENT_RENEWAL_DATE = new Date("2099-12-31T00:00:00.000Z");
+
+export async function setSchoolPermanentAction(schoolId: string) {
+  await verifyAdmin();
+  const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { id: true } });
+  if (!school) return { error: "Établissement introuvable." };
+
+  await prisma.school.update({
+    where: { id: schoolId },
+    data: { subscriptionStatus: "active", subscriptionRenewsAt: PERMANENT_RENEWAL_DATE },
+  });
+
+  revalidatePath("/admin");
+  revalidatePath(`/admin/ecoles/${schoolId}`);
+  return { ok: true };
+}
+
 export async function deleteSchoolAction(schoolId: string, confirmName: string) {
   await verifyAdmin();
   const school = await prisma.school.findUnique({
