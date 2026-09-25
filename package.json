@@ -14,7 +14,8 @@
     "pretest:integ": "node scripts/sync-prisma-provider.mjs && node scripts/prisma-generate-safe.mjs",
     "test:integ": "node --require ./tests/integration/setup.cjs --require ./tests/server-only-shim.cjs --import tsx --test --test-concurrency=1 tests/integration/*.test.ts",
     "db:seed": "tsx prisma/seed.ts",
-    "admin:create": "tsx scripts/create-admin.ts"
+    "admin:create": "tsx scripts/create-admin.ts",
+    "demo:reset": "tsx scripts/reset-demo.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

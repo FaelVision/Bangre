@@ -6,6 +6,14 @@ import { AdminShell } from "@/components/admin-shell";
 import { Card, Badge } from "@/components/ui";
 import { PaymentDecisionButtons } from "@/components/payment-decision-buttons";
 import { PermanentButton, PermanentBadge } from "@/components/permanent-button";
+import { DemoAccountCard } from "@/components/demo-account-card";
+import {
+  getDemoSchoolSummary,
+  DEMO_SCHOOL_NAME,
+  DEMO_EMAIL,
+  DEMO_PHONE,
+  DEMO_PASSWORD,
+} from "@/lib/demo-school";
 import { StateBadge } from "./state-badge";
 
 const FILTERS = [
@@ -23,9 +31,10 @@ export default async function AdminHomePage({
 }) {
   const admin = await verifyAdmin();
   const { etat, q } = await searchParams;
-  const [{ rows, stats }, pendingPayments] = await Promise.all([
+  const [{ rows, stats }, pendingPayments, demo] = await Promise.all([
     getAdminOverview(),
     getPendingSubscriptionPayments(),
+    getDemoSchoolSummary(),
   ]);
 
   const filtered = rows.filter((r) => {
@@ -60,6 +69,16 @@ export default async function AdminHomePage({
           tone={stats.expired + stats.blocked > 0 ? "danger" : undefined}
         />
       </div>
+
+      <DemoAccountCard
+        summary={demo}
+        credentials={{
+          name: DEMO_SCHOOL_NAME,
+          email: DEMO_EMAIL,
+          phone: DEMO_PHONE,
+          password: DEMO_PASSWORD,
+        }}
+      />
 
       {pendingPayments.length > 0 && (
         <Card className="mt-4 border-(--color-gold-border)">
@@ -160,6 +179,12 @@ function SchoolLine({ row, zebra }: { row: SchoolRow; zebra: boolean }) {
         <Link href={`/admin/ecoles/${row.id}`} className="font-semibold text-(--color-text) no-underline hover:underline">
           {row.name}
         </Link>
+        {/* So the presentation account is never read as a customer. */}
+        {row.email === DEMO_EMAIL && (
+          <Badge tone="neutral" className="ml-2 align-middle">
+            Démo
+          </Badge>
+        )}
         <div className="text-[12px] text-(--color-text-muted)">
           {[row.city, row.type].filter(Boolean).join(" · ") || "—"}
         </div>

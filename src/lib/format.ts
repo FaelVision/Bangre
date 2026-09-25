@@ -30,6 +30,17 @@ export function formatDateTime(date: Date | string | null | undefined) {
   }).format(d);
 }
 
+const PAYMENT_METHODS: Record<string, string> = {
+  cash: "Espèces",
+  mobile_money: "Mobile Money",
+  bank: "Virement bancaire",
+};
+
+/** How a payment method is written on screen; an unknown one shows as stored. */
+export function formatMethod(method: string) {
+  return PAYMENT_METHODS[method] ?? method;
+}
+
 export function initials(firstName: string, lastName: string) {
   return `${lastName.charAt(0)}${firstName.charAt(0)}`.toUpperCase();
 }

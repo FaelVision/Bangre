@@ -8,6 +8,7 @@ import { verifyAdmin } from "@/lib/admin-dal";
 import { createAdminSession, deleteAdminSession } from "@/lib/admin-session";
 import { normalizePhone } from "@/lib/validation";
 import { confirmSubscriptionPayment, rejectSubscriptionPayment, PERMANENT_RENEWAL_DATE } from "@/lib/subscription-core";
+import { resetDemoSchool, type DemoResetResult } from "@/lib/demo-school";
 
 export type AdminActionState = { error?: string; ok?: string } | undefined;
 
@@ -84,6 +85,24 @@ export async function deleteSchoolAction(schoolId: string, confirmName: string) 
 
   revalidatePath("/admin");
   return { ok: true };
+}
+
+/**
+ * Rebuilds the demonstration school (see `demo-school.ts`). It only ever
+ * replaces the account holding the demo e-mail, so it is safe to press in
+ * production — which is the point: the presentation account lives on the real
+ * deployment, and is reset from there between two meetings.
+ */
+export async function resetDemoSchoolAction(): Promise<DemoResetResult | { error: string }> {
+  await verifyAdmin();
+  try {
+    const result = await resetDemoSchool();
+    revalidatePath("/admin");
+    return result;
+  } catch (err) {
+    console.error("[admin] réinitialisation de la démo :", err);
+    return { error: "La création du compte de démonstration a échoué." };
+  }
 }
 
 export async function confirmSubscriptionPaymentAction(paymentId: string) {

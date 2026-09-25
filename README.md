@@ -45,6 +45,36 @@ Tout est idempotent (un rappel `(élève, tranche, déclencheur)` n'est envoyé 
 
 `GET/POST /api/whatsapp/webhook` reçoit les accusés de livraison Meta (`WHATSAPP_WEBHOOK_VERIFY_TOKEN`) et fait passer chaque `Reminder` de `sent` → `delivered` → `read` (ou `failed`) via `providerMessageId`.
 
+## Compte de démonstration
+
+Un établissement complet et crédible, à montrer aux clients potentiels, qui vit à côté des vraies écoles et n'expire jamais.
+
+| | |
+| --- | --- |
+| Établissement | Groupe scolaire La Réussite |
+| E-mail | `demo@bangre.bf` |
+| Téléphone | `+226 00 11 22 33` |
+| Mot de passe | `Bangre2026` |
+
+Il contient 8 classes et 120 élèves (du CP1 à la 2nde), des tranches et des frais d'inscription, ~300 reçus dont quelques-uns **du jour même**, une trentaine d'élèves en retard, des parents injoignables sur WhatsApp à rappeler par téléphone, des rappels déjà envoyés, et une classe volontairement laissée sans montant de scolarité pour montrer l'invite de configuration. Les échéances sont calculées par rapport à la date du jour : la démo ne vieillit pas.
+
+**Le créer ou le remettre à neuf :**
+
+- **en ligne** — panneau `/admin`, carte « Compte de démonstration », bouton « Réinitialiser la démo ». C'est la façon recommandée : elle s'exécute contre la vraie base de production et n'a aucun effet sur les autres établissements ;
+- **en local** — `npm run demo:reset` (à ne pas confondre avec `npm run db:seed`, qui vide toute la base).
+
+Le jeu de données est déterministe (`src/lib/demo-dataset.ts`) : deux réinitialisations donnent la même école, donc une présentation répétée une fois se déroule pareil la fois suivante. Réinitialiser efface tout ce qui a été saisi pendant les démonstrations précédentes.
+
+**Parcours suggéré (≈ 10 minutes) :**
+
+1. **Tableau de bord** — « voilà où en est la scolarité de l'école » : total attendu, encaissé, reste à recouvrer, élèves en retard.
+2. **Retards de paiement** — filtrer « + de 15 jours », puis « WhatsApp : injoignables » pour montrer la liste d'appels ; exporter en PDF.
+3. **Envoyer un rappel** — sélectionner quelques familles, « Envoyer les rappels » : le message est pré-rempli, l'utilisateur l'ouvre dans son propre WhatsApp.
+4. **Encaisser** — « Enregistrer un paiement », choisir un élève, cocher une tranche : le reçu se remplit à l'écran, le PDF est imprimable.
+5. **Fiche élève** — tranches payées / en retard, historique des reçus, rappels envoyés.
+6. **Mode avion** — couper le réseau du téléphone ou du portable, puis continuer à naviguer et encaisser un paiement : tout reste disponible et la barre latérale affiche « Hors ligne · 1 enregistrement en attente ».
+7. **Réseau rétabli** — le paiement part tout seul, reçoit son numéro de reçu et apparaît dans le journal de caisse.
+
 ## Fonctionnement hors ligne
 
 Bangre est utilisable **entièrement sans réseau** : la connexion sert à synchroniser, pas à travailler. Trois pièces :

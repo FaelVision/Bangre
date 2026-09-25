@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatAmount, formatDate, ageFromBirthDate } from "@/lib/format";
+import { formatAmount, formatDate, formatMethod, ageFromBirthDate } from "@/lib/format";
 import { Avatar, Badge, Card, ProgressBar } from "@/components/ui";
 import { ReminderButton } from "@/components/reminder-button";
 import { PayButton } from "@/components/pay-button";
@@ -235,7 +235,7 @@ export function StudentDetailView({ data, offline = false }: { data: StudentDeta
                       {formatDate(p.date)} · {p.allocations.map((a) => a.tranche.label).join(", ") || "Paiement libre"}
                     </div>
                     <div className="text-xs text-(--color-text-muted)">
-                      {p.method === "cash" ? "Espèces" : p.method} ·{" "}
+                      {formatMethod(p.method)} ·{" "}
                       {p.receiptNumber > 0
                         ? `reçu N° ${String(p.receiptNumber).padStart(4, "0")}`
                         : "reçu numéroté à la synchronisation"}

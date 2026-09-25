@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatAmount, formatCFA, formatDateTime } from "@/lib/format";
+import { formatAmount, formatCFA, formatDateTime, formatMethod } from "@/lib/format";
 import { Card, PageHeader, ProgressBar, LinkButton } from "@/components/ui";
 import { PayButton } from "@/components/pay-button";
 
@@ -211,7 +211,7 @@ export function DashboardView({ data, yearLabel }: { data: DashboardViewData; ye
                       {p.student.firstName.charAt(0)}. {p.student.lastName}
                     </div>
                     <div className="text-xs text-(--color-text-muted) truncate">
-                      {p.student.class.name} · {p.method === "cash" ? "espèces" : p.method} · {formatDateTime(p.date)}
+                      {p.student.class.name} · {formatMethod(p.method)} · {formatDateTime(p.date)}
                     </div>
                   </div>
                   <div className="text-sm font-semibold tabular-nums shrink-0">{formatAmount(p.amount)}</div>
