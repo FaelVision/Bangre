@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatAmount, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui";
-import { bulkPreviewRemindersAction, bulkChangeClassAction } from "@/lib/actions/students";
+import { bulkChangeClassAction } from "@/lib/actions/students";
+import { prepareReminders } from "@/lib/reminder-client";
+import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 import { WhatsAppQueueModal, type PreparedReminder } from "@/components/whatsapp-queue-modal";
 import type { StudentSummary } from "@/lib/tuition";
 
@@ -32,10 +34,13 @@ export function StudentsTable({
   students,
   showClassColumn,
   classOptions,
+  offline = false,
 }: {
   students: StudentRow[];
   showClassColumn: boolean;
   classOptions?: { id: string; name: string }[];
+  /** Hides what needs the server: moving students between classes is not queued. */
+  offline?: boolean;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
@@ -56,12 +61,8 @@ export function StudentsTable({
   }
 
   function sendReminders() {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      alert("Rappels WhatsApp indisponibles hors ligne.");
-      return;
-    }
     startTransition(async () => {
-      const res = await bulkPreviewRemindersAction(Array.from(selected));
+      const res = await prepareReminders(Array.from(selected));
       setQueue({ items: res.prepared, skipped: res.skipped });
       setSelected(new Set());
     });
@@ -73,6 +74,7 @@ export function StudentsTable({
       await bulkChangeClassAction(Array.from(selected), moveTarget);
       setSelected(new Set());
       setMoveTarget("");
+      scheduleSnapshotRefresh();
       router.refresh();
     });
   }
@@ -161,7 +163,7 @@ export function StudentsTable({
           >
             Envoyer un rappel WhatsApp
           </button>
-          {classOptions && (
+          {classOptions && !offline && (
             <div className="flex items-center gap-1.5">
               <select
                 value={moveTarget}

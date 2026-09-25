@@ -2,9 +2,27 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui";
 import { StudentsTable, type StudentRow } from "@/components/students-table";
 import { ListFilters } from "@/components/list-filters";
-import type { getStudentsList } from "@/lib/queries";
+import type { StudentSummary } from "@/lib/tuition";
 
-type Result = Awaited<ReturnType<typeof getStudentsList>>;
+/** What the list needs of a student — satisfied by the database rows and by the local copy alike. */
+export type StudentsListResult = {
+  rows: {
+    student: {
+      id: string;
+      matricule: string;
+      lastName: string;
+      firstName: string;
+      birthDate: Date | null;
+      parentPhone: string | null;
+      class: { name: string };
+    };
+    summary: StudentSummary;
+  }[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
 
 export function StudentsListView({
   title,
@@ -17,17 +35,21 @@ export function StudentsListView({
   showClassColumn,
   classOptions,
   extraActions,
+  offline = false,
+  onNavigate,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   eyebrow?: React.ReactNode;
   basePath: string;
-  result: Result;
+  result: StudentsListResult;
   q?: string;
   statut?: string;
   showClassColumn: boolean;
   classOptions?: { id: string; name: string }[];
   extraActions?: React.ReactNode;
+  offline?: boolean;
+  onNavigate?: (href: string) => void;
 }) {
   const rows: StudentRow[] = result.rows.map(({ student, summary }) => ({
     id: student.id,
@@ -61,9 +83,15 @@ export function StudentsListView({
             value: q,
           }}
           selects={[{ name: "statut", value: statut ?? "", options: statusOptions }]}
+          onNavigate={onNavigate}
         />
 
-        <StudentsTable students={rows} showClassColumn={showClassColumn} classOptions={classOptions} />
+        <StudentsTable
+          students={rows}
+          showClassColumn={showClassColumn}
+          classOptions={classOptions}
+          offline={offline}
+        />
 
         <div className="flex items-center justify-between mt-3.5 text-[13px] text-(--color-text-muted)">
           <span className="tabular-nums">

@@ -1,41 +1,104 @@
 /* Bangre offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
-const OFFLINE_URL = "/hors-ligne";
 
-// Pages worth having available before the user ever visits them offline.
-const PRECACHE_PAGES = [
-  OFFLINE_URL,
-  "/tableau-de-bord",
-  "/classes",
-  "/eleves",
-  "/eleves/nouveau",
-  "/retards",
-  "/paiements",
-  "/passage-annee",
+/**
+ * The offline application. It renders any screen from the copy of the school
+ * kept in IndexedDB, so it is served for pages this device has never opened —
+ * that is what makes the whole app usable without a network, not just the
+ * pages already visited.
+ */
+const SHELL_URL = "/hors-ligne";
+
+/** Screens the shell knows how to draw from local data. */
+const SHELL_ROUTES = [
+  /^\/$/,
+  /^\/hors-ligne$/,
+  /^\/tableau-de-bord$/,
+  /^\/classes$/,
+  /^\/classes\/[^/]+\/eleves$/,
+  /^\/eleves$/,
+  /^\/eleves\/nouveau$/,
+  /^\/eleves\/[^/]+$/,
+  /^\/eleves\/[^/]+\/modifier$/,
+  /^\/retards$/,
+  /^\/paiements$/,
 ];
 
 const STATIC_ASSET_RE = /\.(?:js|css|woff2?|png|jpg|jpeg|svg|ico|webp)$/;
 // Never serve a stale answer for these — money, sessions and admin actions.
 const NEVER_CACHE_RE = /^\/(api|admin|connexion|inscription)(\/|$)/;
 
+function isShellRoute(pathname) {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return SHELL_ROUTES.some((re) => re.test(path));
+}
+
+/**
+ * Downloads the shell and everything it needs to boot with no server: its
+ * scripts and stylesheets, and the fonts those stylesheets point at. Without
+ * this the document would come out of the cache and then sit there, unable to
+ * fetch its own JavaScript.
+ */
+async function precacheShell() {
+  const pages = await caches.open(PAGES_CACHE);
+  const assets = await caches.open(ASSETS_CACHE);
+
+  let html;
+  try {
+    const res = await fetch(SHELL_URL, { credentials: "same-origin", cache: "no-cache" });
+    // A redirect means the server answered something else (a login page);
+    // caching it under /hors-ligne would poison the offline entry point.
+    if (!res.ok || res.redirected) return;
+    html = await res.clone().text();
+    await pages.put(SHELL_URL, res);
+  } catch {
+    return; // no network at install time; the next activation tries again
+  }
+
+  const urls = new Set();
+  for (const match of html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)) {
+    urls.add(match[1].replace(/&amp;/g, "&"));
+  }
+
+  // Fonts are referenced from inside the stylesheets, never from the HTML, so
+  // the stylesheets are read as they are cached and their urls collected.
+  const fonts = new Set();
+  await Promise.all(
+    [...urls].map(async (url) => {
+      try {
+        const res = await fetch(url, { credentials: "same-origin" });
+        if (!res.ok) return;
+        if (url.endsWith(".css")) {
+          const css = await res.clone().text();
+          for (const match of css.matchAll(/url\((\/_next\/static\/media\/[^)"']+)\)/g)) {
+            fonts.add(match[1]);
+          }
+        }
+        await assets.put(url, res);
+      } catch {
+        /* one missing asset must not abort the whole install */
+      }
+    })
+  );
+
+  await Promise.all(
+    [...fonts].map(async (url) => {
+      try {
+        const res = await fetch(url, { credentials: "same-origin" });
+        if (res.ok) await assets.put(url, res);
+      } catch {
+        /* ignore */
+      }
+    })
+  );
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(PAGES_CACHE);
-      // Individually, so one failure (e.g. a page needing a fresh session)
-      // does not abort the whole install.
-      await Promise.all(
-        PRECACHE_PAGES.map(async (url) => {
-          try {
-            const res = await fetch(url, { credentials: "same-origin" });
-            if (res.ok && !res.redirected) await cache.put(url, res);
-          } catch {
-            /* offline at install time — the page will be cached on first visit */
-          }
-        })
-      );
+      await precacheShell();
       await self.skipWaiting();
     })()
   );
@@ -49,20 +112,28 @@ self.addEventListener("activate", (event) => {
         keys.filter((k) => k !== PAGES_CACHE && k !== ASSETS_CACHE).map((k) => caches.delete(k))
       );
       await self.clients.claim();
+      // A new deployment ships new asset hashes: re-take the shell so the
+      // offline copy matches what is now served.
+      await precacheShell();
     })()
   );
 });
 
 self.addEventListener("message", (event) => {
   if (event.data === "skip-waiting") self.skipWaiting();
+  if (event.data === "bangre:refresh-shell") event.waitUntil(precacheShell());
 });
 
 /**
  * Network-first for pages: the secretary must see live figures whenever there
- * is a connection, and the last good copy only when there is not.
+ * is a connection. Without one, the offline shell takes over for every screen
+ * it can draw from the device copy, and the last good HTML is the fallback for
+ * the rest (class configuration, import, passage d'année…).
  */
 async function handleNavigation(request) {
   const cache = await caches.open(PAGES_CACHE);
+  const url = new URL(request.url);
+
   try {
     const res = await fetch(request);
     // A redirect means "sign in again" — caching it under the requested URL
@@ -70,11 +141,17 @@ async function handleNavigation(request) {
     if (res.ok && !res.redirected) cache.put(request, res.clone());
     return res;
   } catch {
-    const cached = (await cache.match(request)) || (await cache.match(new URL(request.url).pathname));
+    const shell = await cache.match(SHELL_URL);
+    if (shell && isShellRoute(url.pathname)) return shell;
+
+    const cached = (await cache.match(request)) || (await cache.match(url.pathname));
     if (cached) return cached;
-    const offline = await cache.match(OFFLINE_URL);
-    if (offline) return offline;
-    return new Response("Hors ligne", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    if (shell) return shell;
+
+    return new Response("Hors ligne", {
+      status: 503,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
   }
 }
 
@@ -113,7 +190,7 @@ self.addEventListener("fetch", (event) => {
 
   // RSC payload fetches (client-side <Link> navigation): let them hit the
   // network untouched. When offline they fail fast and Next falls back to a
-  // full document navigation, which `handleNavigation` serves from cache.
+  // full document navigation, which `handleNavigation` answers with the shell.
   if (url.searchParams.has("_rsc") || request.headers.get("RSC") === "1") return;
 
   if (STATIC_ASSET_RE.test(url.pathname)) {

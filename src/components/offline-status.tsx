@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { listQueued, flushQueue, QUEUE_CHANGED, type QueuedEntry } from "@/lib/offline-queue";
+import { listQueued, QUEUE_CHANGED, type QueuedEntry } from "@/lib/offline-queue";
+import { MIRROR_CHANGED, refreshIfStale, snapshotAge, syncAll } from "@/lib/offline-mirror";
 
 function subscribeToConnectivity(callback: () => void) {
   window.addEventListener("online", callback);
@@ -42,9 +43,74 @@ export function usePendingQueue() {
   return items;
 }
 
+/** How old the copy of the school on this device is, in minutes. */
+function useSnapshotAge() {
+  const [age, setAge] = useState<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    const read = async () => setAge(await snapshotAge());
+    void read();
+    const handler = () => void read();
+    window.addEventListener(MIRROR_CHANGED, handler);
+    // The age itself keeps changing even when nothing happens.
+    const timer = setInterval(handler, 60_000);
+    return () => {
+      window.removeEventListener(MIRROR_CHANGED, handler);
+      clearInterval(timer);
+    };
+  }, []);
+
+  return age;
+}
+
+function ageLabel(ageMs: number) {
+  const minutes = Math.floor(ageMs / 60_000);
+  if (minutes < 1) return "à l'instant";
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `il y a ${days} j`;
+}
+
+/** Idle safety net: a long tick, so an app left open all day does not go stale. */
+const PERIODIC_REFRESH_MS = 15 * 60 * 1000;
+
+/**
+ * Keeps the local copy current while the app is open: once at startup, at every
+ * reconnection, when the tab comes back to the foreground, and on a slow timer.
+ * Renders nothing — it is the part of the app that only talks to the network.
+ */
+export function OfflineSync() {
+  const online = useOnlineStatus();
+
+  useEffect(() => {
+    if (!online) return;
+
+    void refreshIfStale();
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshIfStale();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = setInterval(() => {
+      // Nothing to keep fresh for a tab nobody is looking at.
+      if (document.visibilityState === "visible") void refreshIfStale(PERIODIC_REFRESH_MS);
+    }, PERIODIC_REFRESH_MS);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(timer);
+    };
+  }, [online]);
+
+  return null;
+}
+
 export function OfflineStatusCard() {
   const online = useOnlineStatus();
   const items = usePendingQueue();
+  const age = useSnapshotAge();
   const router = useRouter();
 
   const [syncing, setSyncing] = useState(false);
@@ -55,14 +121,16 @@ export function OfflineStatusCard() {
       if (syncing) return;
       setSyncing(true);
       try {
-        const res = await flushQueue();
+        // Send what was captured offline, then pull the school back down so the
+        // device sees the server's version of its own writes.
+        const res = await syncAll();
         if (res.synced > 0) {
           setReport(`${res.synced} enregistrement(s) synchronisé(s).`);
           router.refresh();
         } else if (res.errors.length) {
           setReport(res.errors[0]);
         } else if (!silent) {
-          setReport("Rien à synchroniser.");
+          setReport(res.refreshed ? "Données à jour sur cet appareil." : "Synchronisation impossible pour le moment.");
         }
       } finally {
         setSyncing(false);
@@ -131,6 +199,15 @@ export function OfflineStatusCard() {
             : "Vous pouvez continuer à travailler : tout sera envoyé au retour du réseau."}
       </div>
 
+      {/* The other half of working offline: what this device holds locally. */}
+      <div className="text-[11.5px] text-(--color-text-muted) mt-1.5 leading-snug">
+        {age === undefined
+          ? null
+          : age === null
+            ? "Copie locale des données : pas encore téléchargée."
+            : `Copie locale des données : ${ageLabel(age)}.`}
+      </div>
+
       {pending > 0 && (
         <div className="grid gap-1 mt-2 max-h-[104px] overflow-y-auto">
           {items.slice(0, 6).map((item) => (
@@ -143,15 +220,19 @@ export function OfflineStatusCard() {
         </div>
       )}
 
-      {pending > 0 && (
-        <button
-          onClick={() => void sync(false)}
-          disabled={!online || syncing}
-          className="h-[34px] w-full rounded-lg border border-(--color-border-strong) flex items-center justify-center text-[12.5px] font-semibold mt-2.5 cursor-pointer bg-(--color-bg-subtle) disabled:opacity-50"
-        >
-          {syncing ? "Synchronisation…" : online ? "Synchroniser maintenant" : "En attente de réseau"}
-        </button>
-      )}
+      <button
+        onClick={() => void sync(false)}
+        disabled={!online || syncing}
+        className="h-[34px] w-full rounded-lg border border-(--color-border-strong) flex items-center justify-center text-[12.5px] font-semibold mt-2.5 cursor-pointer bg-(--color-bg-subtle) disabled:opacity-50"
+      >
+        {syncing
+          ? "Synchronisation…"
+          : !online
+            ? "En attente de réseau"
+            : pending > 0
+              ? "Synchroniser maintenant"
+              : "Mettre à jour les données"}
+      </button>
 
       {report && <div className="text-[11.5px] text-(--color-text-secondary) mt-2 leading-snug">{report}</div>}
     </div>

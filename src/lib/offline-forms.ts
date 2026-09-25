@@ -1,6 +1,7 @@
 "use client";
 
 import { enqueue, type StudentPayload } from "@/lib/offline-queue";
+import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 
 /** Shared shape returned by the offline-aware student actions. */
 export type StudentFormState = { error?: string; queued?: string } | undefined;
@@ -48,9 +49,16 @@ export async function runOrQueue(
   }
 
   try {
-    return await run();
+    const state = await run();
+    // The redirect on success throws, so reaching here means the form came back
+    // with an error; nothing new to copy locally in that case.
+    if (!state?.error) scheduleSnapshotRefresh();
+    return state;
   } catch (err) {
-    if (isRedirectSignal(err)) throw err;
+    if (isRedirectSignal(err)) {
+      scheduleSnapshotRefresh();
+      throw err;
+    }
     await enqueue(operation, queued.label);
     return { queued: queued.label };
   }

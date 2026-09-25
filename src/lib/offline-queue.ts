@@ -1,17 +1,12 @@
 "use client";
 
-import { openDB, type IDBPDatabase } from "idb";
+import { getDb, QUEUE_STORE as STORE, CONTEXT_STORE } from "@/lib/offline-db";
 
 /**
  * Outbox of writes captured while offline. Everything the secretary does at the
  * counter without a connection lands here and is replayed, in order, against
  * /api/sync as soon as the network comes back.
  */
-
-const DB_NAME = "bangre-offline";
-const STORE = "pending-payments"; // kept from v1 so existing queued items survive
-const CONTEXT_STORE = "payment-context"; // last-seen tranche state per student, for offline
-const DB_VERSION = 3;
 
 export type PaymentPayload = {
   studentId: string;
@@ -39,7 +34,8 @@ export type StudentPayload = {
 export type QueuedOperation =
   | { kind: "payment"; payload: PaymentPayload }
   | { kind: "student.create"; payload: StudentPayload }
-  | { kind: "student.update"; studentId: string; payload: StudentPayload };
+  | { kind: "student.update"; studentId: string; payload: StudentPayload }
+  | { kind: "reminder.send"; studentId: string; trancheId: string | null; message: string };
 
 export type QueuedEntry = QueuedOperation & {
   id: string;
@@ -50,25 +46,6 @@ export type QueuedEntry = QueuedOperation & {
 };
 
 export const QUEUE_CHANGED = "bangre:queue-changed";
-
-let dbPromise: Promise<IDBPDatabase> | null = null;
-
-function getDb() {
-  if (typeof indexedDB === "undefined") return null;
-  if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: "id" });
-        }
-        if (!db.objectStoreNames.contains(CONTEXT_STORE)) {
-          db.createObjectStore(CONTEXT_STORE, { keyPath: "studentId" });
-        }
-      },
-    });
-  }
-  return dbPromise;
-}
 
 /**
  * `crypto.randomUUID` only exists in secure contexts, and the app is served

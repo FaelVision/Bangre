@@ -4,11 +4,13 @@ import { decryptSession } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { persistPayment, type RecordPaymentInput } from "@/lib/payments-core";
 import { createStudent, updateStudent, type StudentInput } from "@/lib/students-core";
+import { recordReminderSent } from "@/lib/reminders-core";
 
 type Body =
   | { kind: "payment"; payload: RecordPaymentInput }
   | { kind: "student.create"; payload: StudentInput }
-  | { kind: "student.update"; studentId: string; payload: StudentInput };
+  | { kind: "student.update"; studentId: string; payload: StudentInput }
+  | { kind: "reminder.send"; studentId: string; trancheId: string | null; message: string };
 
 /**
  * Replays one operation captured while the browser was offline.
@@ -56,6 +58,22 @@ export async function POST(req: NextRequest) {
         const result = await updateStudent(session.schoolId, body.studentId, body.payload);
         if (result.ok) return NextResponse.json(result);
         return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
+      }
+
+      case "reminder.send": {
+        // The message was already opened in WhatsApp on the device; this only
+        // records that it went out, so the student file and the retards list
+        // stop showing "aucun rappel".
+        const student = await prisma.student.findFirst({
+          where: { id: body.studentId, schoolId: session.schoolId },
+          select: { id: true },
+        });
+        if (!student) {
+          return NextResponse.json({ ok: false, error: "Élève introuvable.", permanent: true }, { status: 400 });
+        }
+        return NextResponse.json(
+          await recordReminderSent(session.schoolId, body.studentId, body.trancheId, body.message)
+        );
       }
 
       default:

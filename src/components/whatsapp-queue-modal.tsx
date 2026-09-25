@@ -2,16 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { confirmReminderSentAction } from "@/lib/actions/students";
+import { confirmReminderSent, type PreparedReminder } from "@/lib/reminder-client";
 import { buildWhatsAppLink } from "@/lib/whatsapp-link";
 
-export type PreparedReminder = {
-  studentId: string;
-  trancheId: string | null;
-  label: string;
-  phone: string;
-  message: string;
-};
+export type { PreparedReminder };
 
 /**
  * Shown after a bulk "Envoyer les rappels" click. Each family got its message
@@ -93,7 +87,7 @@ function Row({ item, sent, onSent }: { item: PreparedReminder; sent: boolean; on
     onSent();
     setEditing(false);
     startTransition(async () => {
-      await confirmReminderSentAction(item.studentId, item.trancheId, text);
+      await confirmReminderSent(item, text);
       router.refresh();
     });
   }

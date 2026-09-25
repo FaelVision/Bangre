@@ -4,6 +4,7 @@ import { daysUntil, formatDate } from "@/lib/format";
 import { AppShell } from "@/components/app-shell";
 import { PaymentModalProvider } from "@/components/payment-modal-context";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { OfflineSync } from "@/components/offline-status";
 import { SubscriptionExpiryAlert } from "@/components/subscription-expiry-alert";
 
 const EXPIRY_ALERT_THRESHOLD_DAYS = 7;
@@ -38,6 +39,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       >
         {children}
         <ServiceWorkerRegister />
+        <OfflineSync />
       </AppShell>
       {daysLeft !== null && daysLeft <= EXPIRY_ALERT_THRESHOLD_DAYS && (
         <SubscriptionExpiryAlert daysLeft={daysLeft} isTrial={!isActive} untilLabel={formatDate(expiryDate)} />

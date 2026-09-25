@@ -9,6 +9,7 @@ import { Field, Label, TextInput, Select } from "@/components/form";
 import { DateInput } from "@/components/date-input";
 import { Button, Card } from "@/components/ui";
 import { runOrQueue, studentPayloadFrom, type StudentFormState } from "@/lib/offline-forms";
+import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 import { OfflineQueuedNotice } from "@/components/offline-queued-notice";
 
 export function EditStudentForm({ student }: { student: Student }) {
@@ -41,7 +42,11 @@ export function EditStudentForm({ student }: { student: Student }) {
     startDelete(async () => {
       const res = await deleteStudentAction(student.id);
       if (res && "error" in res) alert(res.error);
-      else router.push(`/classes/${student.classId}/eleves`);
+      else {
+        // The copy on the device still holds the student: take it again.
+        scheduleSnapshotRefresh();
+        router.push(`/classes/${student.classId}/eleves`);
+      }
     });
   }
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import {
+  allocatePayment,
   computeStudentSummary,
   computeTrancheStates,
   studentQueryInclude,
@@ -37,32 +38,9 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
   }
 
   const trancheStates = computeTrancheStates(student.class.tranches, student.payments);
-  const unpaid = trancheStates.filter((t) => t.remaining > 0).sort((a, b) => a.tranche.order - b.tranche.order);
-
-  const allocations: { trancheId: string; amount: number }[] = [];
-
-  if (input.mode === "tranches") {
-    const wanted = new Set(input.trancheIds);
-    for (const t of unpaid) {
-      if (wanted.has(t.tranche.id)) allocations.push({ trancheId: t.tranche.id, amount: t.remaining });
-    }
-    if (allocations.length === 0) return { ok: false, error: "Sélectionnez au moins une tranche." };
-  } else {
-    let budget = Math.round(input.amount);
-    if (budget <= 0) return { ok: false, error: "Montant invalide." };
-    for (const t of unpaid) {
-      if (budget <= 0) break;
-      const take = Math.min(budget, t.remaining);
-      if (take > 0) {
-        allocations.push({ trancheId: t.tranche.id, amount: take });
-        budget -= take;
-      }
-    }
-    if (allocations.length === 0) return { ok: false, error: "Toutes les tranches sont déjà payées." };
-  }
-
-  const amount = allocations.reduce((s, a) => s + a.amount, 0);
-  if (amount <= 0) return { ok: false, error: "Montant invalide." };
+  const allocated = allocatePayment(trancheStates, input);
+  if (!allocated.ok) return { ok: false, error: allocated.error };
+  const { allocations, amount } = allocated;
 
   const date = input.date ? new Date(input.date) : new Date();
 

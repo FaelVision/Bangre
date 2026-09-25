@@ -1,19 +1,21 @@
 /*
  * End-to-end offline test in a real browser (installed Edge, driven by Playwright).
  *
- * Scenario: sign in, let the service worker install, cut the network, browse,
- * record a payment and add a student, restore the network, check everything
- * reached the server.
+ * Scenario: start the production server, sign in, let the service worker install
+ * and the device copy download, then *stop the server* — the only way to be
+ * genuinely offline, since a browser "offline" toggle does not always apply to
+ * the service worker's own fetches. With no server at all, browse pages this
+ * device has never visited, record a payment and add a student, bring the
+ * server back, and check everything reached the database.
  *
- * Note: Playwright's `context.setOffline` does not fully intercept the Service
- * Worker's own `fetch()` in Edge, so the "serve a cached page while offline"
- * checks can be flaky here even when the feature works in a real browser. The
- * queue / sync / `navigator.onLine` checks are the reliable ones.
+ * Run: npm run build && npx tsx _offline-test.ts
  */
-import { chromium, type Page } from "playwright";
+import { spawn, execSync, type ChildProcess } from "node:child_process";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { PrismaClient } from "@prisma/client";
 
-const BASE = "http://localhost:3000";
+const PORT = 3100;
+const BASE = `http://127.0.0.1:${PORT}`;
 const prisma = new PrismaClient();
 const results: { name: string; ok: boolean; detail: string }[] = [];
 
@@ -22,125 +24,67 @@ function check(name: string, ok: boolean, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
-const swReady = (page: Page) =>
-  page.waitForFunction(async () => (await navigator.serviceWorker.getRegistrations()).some((r) => r.active), null, {
-    timeout: 20000,
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The renewal popup sits above everything; get it out of the way before clicking. */
+async function dismissAlerts(page: Page) {
+  const later = page.getByRole("button", { name: "Plus tard" });
+  if (await later.isVisible().catch(() => false)) await later.click();
+}
+
+// --- server lifecycle -------------------------------------------------------
+
+let server: ChildProcess | null = null;
+
+async function startServer() {
+  server = spawn("npm.cmd", ["run", "start", "--", "-p", String(PORT)], {
+    cwd: process.cwd(),
+    shell: true,
+    stdio: "ignore",
+    env: { ...process.env, PORT: String(PORT) },
   });
 
-/** Wait until the service worker actually *controls* this page (not just active). */
-const swControls = (page: Page) =>
-  page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 20000 });
-
-async function main() {
-  const browser = await chromium.launch({ channel: "msedge" });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const page = await context.newPage();
-
-  // --- connexion ------------------------------------------------------------
-  await page.goto(`${BASE}/connexion`, { waitUntil: "networkidle" });
-  await page.fill('input[name="phone"]', "+226 70 11 22 33");
-  await page.fill('input[name="password"]', "password123");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("**/tableau-de-bord", { timeout: 20000 });
-  check("connexion aboutit au tableau de bord", page.url().includes("/tableau-de-bord"));
-
-  // --- service worker -------------------------------------------------------
-  let swActive = false;
-  try {
-    await swReady(page);
-    // The worker skipWaiting()s and claim()s, but the page that registered it
-    // may still be uncontrolled until a reload — so reload and wait for control.
-    await page.reload({ waitUntil: "networkidle" });
-    await swControls(page);
-    swActive = true;
-  } catch { /* reported below */ }
-  check("service worker enregistré et actif et contrôlant la page", swActive);
-
-  const swScopes = await page.evaluate(async () =>
-    (await navigator.serviceWorker.getRegistrations()).map((r) => r.scope)
-  );
-  check("portée du service worker = racine du site", swScopes.some((s) => s.endsWith(":3000/")), swScopes.join(", "));
-
-  // Visit — online — every page (and its JS chunks) we later use offline.
-  const offlineStudent = await prisma.student.findFirstOrThrow({ where: { matricule: "BG-455" } });
-  for (const path of [
-    "/eleves",
-    "/classes",
-    "/retards",
-    "/paiements",
-    "/eleves/nouveau",
-    `/eleves/${offlineStudent.id}`,
-  ]) {
-    await page.goto(BASE + path, { waitUntil: "networkidle" });
-    await page.waitForTimeout(400);
-  }
-  await page.goto(`${BASE}/tableau-de-bord`, { waitUntil: "networkidle" });
-
-  const cached = await page.evaluate(async () => {
-    const names = await caches.keys();
-    const out: string[] = [];
-    for (const n of names) {
-      const c = await caches.open(n);
-      out.push(...(await c.keys()).map((r) => new URL(r.url).pathname));
+  for (let i = 0; i < 60; i++) {
+    try {
+      const res = await fetch(`${BASE}/connexion`);
+      if (res.ok) return;
+    } catch {
+      /* not up yet */
     }
-    return out;
-  });
-  check("pages mises en cache", ["/tableau-de-bord", "/eleves", "/hors-ligne"].every((p) => cached.includes(p)),
-    cached.filter((p) => !p.startsWith("/_next")).slice(0, 8).join(", "));
+    await sleep(1000);
+  }
+  throw new Error("le serveur ne démarre pas");
+}
 
-  // --- coupure réseau -------------------------------------------------------
-  await context.setOffline(true);
-  check("navigateur passé hors ligne", !(await page.evaluate(() => navigator.onLine)));
+async function stopServer() {
+  if (!server?.pid) return;
+  // The npm wrapper spawns next itself: kill the whole tree, or the port stays open.
+  try {
+    execSync(`taskkill /pid ${server.pid} /T /F`, { stdio: "ignore" });
+  } catch {
+    server.kill("SIGKILL");
+  }
+  server = null;
 
-  await page.goto(`${BASE}/eleves`, { waitUntil: "domcontentloaded" });
-  const elevesOffline = await page.textContent("body");
-  check("hors ligne : liste des élèves consultable", (elevesOffline ?? "").includes("Élèves"),
-    (elevesOffline ?? "").slice(0, 60).replace(/\s+/g, " "));
+  for (let i = 0; i < 30; i++) {
+    try {
+      await fetch(`${BASE}/connexion`);
+    } catch {
+      return; // connection refused: really offline
+    }
+    await sleep(500);
+  }
+  throw new Error("le serveur répond encore");
+}
 
-  await page.goto(`${BASE}/tableau-de-bord`, { waitUntil: "domcontentloaded" });
-  const dash = await page.textContent("body");
-  check("hors ligne : tableau de bord consultable", (dash ?? "").includes("Total attendu"));
+// --- browser helpers --------------------------------------------------------
 
-  // The service worker falls back to /hors-ligne for an uncached page, but
-  // Playwright's setOffline lets the worker's own fetch() through to the dev
-  // server (a real 404) — so this only checks that the app does not crash.
-  await page.goto(`${BASE}/une-page-jamais-visitee`, { waitUntil: "domcontentloaded" });
-  const fallback = await page.textContent("body");
-  check("hors ligne : page inconnue ne casse pas l'app",
-    (fallback ?? "").includes("pas encore disponible hors ligne") ||
-      (fallback ?? "").includes("404") ||
-      (fallback ?? "").includes("introuvable"),
-    (fallback ?? "").slice(0, 70).replace(/\s+/g, " "));
+const swControls = (page: Page) =>
+  page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, { timeout: 30000 });
 
-  // --- indicateur hors ligne dans la barre latérale --------------------------
-  await page.goto(`${BASE}/tableau-de-bord`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
-  const sidebar = await page.textContent("body");
-  check("la barre latérale indique « Hors ligne »", (sidebar ?? "").includes("Hors ligne"));
-
-  // --- saisie d'un élève hors ligne -----------------------------------------
-  await page.goto(`${BASE}/eleves/nouveau`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('select[name="classId"]'); await page.waitForTimeout(3000);
-  const classId = await page.evaluate(() => {
-    const s = document.querySelector('select[name="classId"]') as HTMLSelectElement | null;
-    return s?.value ?? "";
-  });
-  check("formulaire « nouvel élève » utilisable hors ligne", classId.length > 0, classId.slice(0, 12));
-
-  await page.fill('input[name="matricule"]', "OFFLINE-1");
-  await page.fill('input[name="lastName"]', "SANOU");
-  await page.fill('input[name="firstName"]', "Hors-Ligne");
-  await page.fill('input[placeholder="jj/mm/aaaa"]', "26/11/2006");
-  // Target the form's own button — the sidebar also has a type=submit ("Quitter").
-  await page.getByRole("button", { name: /Ajouter l'élève|Enregistrement/ }).click();
-  await page.waitForTimeout(2500);
-
-  const queuedNotice = await page.textContent("body");
-  check("l'élève est mis en file avec un message clair",
-    (queuedNotice ?? "").includes("Enregistré hors ligne"),
-    (queuedNotice ?? "").match(/Enregistré hors ligne[\s\S]{0,80}/)?.[0]?.replace(/\s+/g, " ") ?? "");
-
-  const queueAfterStudent = await page.evaluate(async () => {
+/** How many entries the outbox holds, read straight from IndexedDB. */
+const queueLength = (page: Page) =>
+  page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((res, rej) => {
       const r = indexedDB.open("bangre-offline");
       r.onsuccess = () => res(r.result);
@@ -151,70 +95,228 @@ async function main() {
       tx.onsuccess = () => res(tx.result.length);
     });
   });
-  check("la file locale contient l'enregistrement", queueAfterStudent >= 1, `${queueAfterStudent} entrée(s)`);
 
-  // --- paiement hors ligne ---------------------------------------------------
+/** The downloaded copy of the school: how many students it holds, if any. */
+const mirrorStudents = (page: Page) =>
+  page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((res, rej) => {
+      const r = indexedDB.open("bangre-offline");
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    if (!db.objectStoreNames.contains("mirror")) return -1;
+    return new Promise<number>((res) => {
+      const tx = db.transaction("mirror", "readonly").objectStore("mirror").get("current");
+      tx.onsuccess = () => res(tx.result?.snapshot?.students?.length ?? 0);
+      tx.onerror = () => res(-1);
+    });
+  });
+
+async function main() {
+  await startServer();
+
+  let browser: Browser;
+  try {
+    browser = await chromium.launch({ channel: "msedge" });
+  } catch {
+    browser = await chromium.launch();
+  }
+  const context: BrowserContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+
+  // --- connexion ------------------------------------------------------------
+  await page.goto(`${BASE}/connexion`, { waitUntil: "networkidle" });
+  await page.fill('input[name="identifier"]', "+226 70 11 22 33");
+  await page.fill('input[name="password"]', "password123");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await page.waitForURL("**/tableau-de-bord", { timeout: 20000 });
+  check("connexion aboutit au tableau de bord", page.url().includes("/tableau-de-bord"));
+  await dismissAlerts(page);
+
+  // --- service worker + copie locale ----------------------------------------
+  let swActive = false;
+  try {
+    await page.reload({ waitUntil: "networkidle" });
+    await swControls(page);
+    swActive = true;
+  } catch {
+    /* reported below */
+  }
+  check("service worker actif et contrôlant la page", swActive);
+  await dismissAlerts(page);
+
+  let students = 0;
+  for (let i = 0; i < 20 && students <= 0; i++) {
+    await sleep(500);
+    students = await mirrorStudents(page);
+  }
+  check("les données de l'école sont copiées sur l'appareil", students > 0, `${students} élèves`);
+
+  const shellCached = await page.evaluate(async () => {
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name);
+      if (await cache.match("/hors-ligne")) return true;
+    }
+    return false;
+  });
+  check("l'application hors ligne est en cache", shellCached);
+
+  // A student whose page this browser has never opened: everything below must
+  // work from the local copy, not from a page cached on the way in.
   const student = await prisma.student.findFirstOrThrow({
     where: { matricule: "BG-455" },
     include: { class: true },
   });
+
+  // --- coupure totale : le serveur est arrêté --------------------------------
+  await stopServer();
+  await context.setOffline(true);
+  check("navigateur hors ligne, serveur arrêté", !(await page.evaluate(() => navigator.onLine)));
+
+  await page.goto(`${BASE}/tableau-de-bord`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2500);
+  const dash = await page.textContent("body");
+  check("hors ligne : tableau de bord rendu depuis l'appareil", (dash ?? "").includes("Total attendu"));
+
   await page.goto(`${BASE}/eleves/${student.id}`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2500);
+  const detail = await page.textContent("body");
+  check(
+    "hors ligne : fiche élève jamais consultée, rendue depuis l'appareil",
+    (detail ?? "").includes(student.lastName) && (detail ?? "").includes("Détail par tranche"),
+    student.matricule
+  );
+
+  await page.goto(`${BASE}/retards`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  const late = await page.textContent("body");
+  check("hors ligne : retards de paiement consultables", (late ?? "").includes("Retards de paiement"));
+
+  await page.goto(`${BASE}/classes/${student.classId}/eleves`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  const classList = await page.textContent("body");
+  check("hors ligne : liste des élèves de la classe consultable", (classList ?? "").includes(student.class.name));
+
+  // --- paiement hors ligne, avec le détail des tranches ----------------------
+  await page.goto(`${BASE}/eleves/${student.id}`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
   await page.click('button:has-text("Enregistrer un paiement")');
   await page.waitForTimeout(1500);
 
-  const offlineForm = await page.textContent("body");
-  check("la modale bascule en mode hors ligne",
-    (offlineForm ?? "").includes("Hors ligne : le détail des tranches"),
-    (offlineForm ?? "").match(/Hors ligne : le détail[\s\S]{0,50}/)?.[0]?.replace(/\s+/g, " ") ?? "");
+  const modal = await page.textContent("body");
+  check(
+    "la modale garde le détail des tranches hors ligne",
+    (modal ?? "").includes("Tranche(s) payée(s)") && (modal ?? "").includes("données de cet appareil")
+  );
 
+  await page.click('button:has-text("Paiement partiel")');
   await page.fill('input[type="number"]', "7500");
-  await page.click('button:has-text("Enregistrer hors ligne")');
+  await page.click('button:has-text("Valider et générer le reçu")');
   await page.waitForTimeout(2000);
-  const paidOffline = await page.textContent("body");
-  check("paiement enregistré hors ligne", (paidOffline ?? "").includes("Paiement enregistré hors ligne"));
+  const paid = await page.textContent("body");
+  check("paiement enregistré hors ligne", (paid ?? "").includes("Paiement enregistré hors ligne"));
 
-  // --- retour du réseau et synchronisation automatique -------------------------
+  await page.click('button:has-text("Fermer")').catch(() => {});
+  await page.waitForTimeout(1000);
+
+  await page.goto(`${BASE}/paiements`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  const journal = await page.textContent("body");
+  check("le paiement apparaît aussitôt dans le journal local", (journal ?? "").includes("Hors ligne"));
+
+  // --- saisie d'un élève hors ligne -----------------------------------------
+  await page.goto(`${BASE}/eleves/nouveau`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('select[name="classId"]', { timeout: 15000 });
+  await page.waitForTimeout(1500);
+  const classId = await page.evaluate(() => {
+    const s = document.querySelector('select[name="classId"]') as HTMLSelectElement | null;
+    return s?.value ?? "";
+  });
+  check("formulaire « nouvel élève » utilisable hors ligne", classId.length > 0, classId.slice(0, 12));
+
+  await page.fill('input[name="matricule"]', "OFFLINE-1");
+  await page.fill('input[name="lastName"]', "SANOU");
+  await page.fill('input[name="firstName"]', "Hors-Ligne");
+  await page.fill('input[placeholder="jj/mm/aaaa"]', "26/11/2006");
+  await page.getByRole("button", { name: /Ajouter l'élève|Enregistrement/ }).click();
+  await page.waitForTimeout(2500);
+  const queuedNotice = await page.textContent("body");
+  check("l'élève est mis en file avec un message clair", (queuedNotice ?? "").includes("Enregistré hors ligne"));
+
+  const queued = await queueLength(page);
+  check("la file locale contient les deux saisies", queued >= 2, `${queued} entrée(s)`);
+
+  await page.goto(`${BASE}/eleves?q=SANOU`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  const listWithQueued = await page.textContent("body");
+  check("l'élève saisi hors ligne apparaît dans la liste locale", (listWithQueued ?? "").includes("Hors-Ligne"));
+
+  // --- retour du réseau ------------------------------------------------------
+  await startServer();
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(1500);
   await page.goto(`${BASE}/tableau-de-bord`, { waitUntil: "networkidle" });
 
   let synced = false;
-  for (let i = 0; i < 20 && !synced; i++) {
-    await page.waitForTimeout(1000);
-    const left = await page.evaluate(async () => {
-      const db = await new Promise<IDBDatabase>((res, rej) => {
-        const r = indexedDB.open("bangre-offline");
-        r.onsuccess = () => res(r.result);
-        r.onerror = () => rej(r.error);
-      });
-      return new Promise<number>((res) => {
-        const tx = db.transaction("pending-payments", "readonly").objectStore("pending-payments").getAll();
-        tx.onsuccess = () => res(tx.result.length);
-      });
-    });
-    if (left === 0) synced = true;
+  for (let i = 0; i < 25 && !synced; i++) {
+    await sleep(1000);
+    synced = (await queueLength(page)) === 0;
   }
   check("la file se vide automatiquement au retour du réseau", synced);
 
   const createdStudent = await prisma.student.findFirst({ where: { matricule: "OFFLINE-1" } });
-  check("l'élève saisi hors ligne est arrivé sur le serveur", createdStudent !== null,
-    createdStudent ? `${createdStudent.lastName} ${createdStudent.firstName}` : "absent");
-  check("sa date de naissance est correcte",
+  check(
+    "l'élève saisi hors ligne est arrivé sur le serveur",
+    createdStudent !== null,
+    createdStudent ? `${createdStudent.lastName} ${createdStudent.firstName}` : "absent"
+  );
+  check(
+    "sa date de naissance est correcte",
     createdStudent?.birthDate?.toISOString().slice(0, 10) === "2006-11-26",
-    String(createdStudent?.birthDate));
+    String(createdStudent?.birthDate)
+  );
 
   const offlinePayment = await prisma.payment.findFirst({
     where: { studentId: student.id, amount: 7500, offlineCreated: true },
     orderBy: { date: "desc" },
   });
-  check("le paiement hors ligne est arrivé et numéroté",
+  check(
+    "le paiement hors ligne est arrivé et numéroté",
     offlinePayment !== null && offlinePayment.receiptNumber > 0,
-    offlinePayment ? `reçu N° ${offlinePayment.receiptNumber}` : "absent");
+    offlinePayment ? `reçu N° ${offlinePayment.receiptNumber}` : "absent"
+  );
+
+  // The copy on the device is pulled again after the replay, so the payment it
+  // shows is now the server's own row — numbered, and no longer "hors ligne".
+  let refreshed = false;
+  for (let i = 0; i < 15 && !refreshed; i++) {
+    await sleep(1000);
+    refreshed = await page.evaluate(async (matricule) => {
+      const db = await new Promise<IDBDatabase>((res, rej) => {
+        const r = indexedDB.open("bangre-offline");
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      });
+      return new Promise<boolean>((res) => {
+        const tx = db.transaction("mirror", "readonly").objectStore("mirror").get("current");
+        tx.onsuccess = () =>
+          res(
+            Boolean(
+              tx.result?.snapshot?.students?.some((s: { matricule: string }) => s.matricule === matricule)
+            )
+          );
+        tx.onerror = () => res(false);
+      });
+    }, "OFFLINE-1");
+  }
+  check("la copie locale est re-téléchargée après la synchronisation", refreshed);
 
   const sidebarAfter = await page.textContent("body");
-  check("la barre latérale repasse « En ligne » et vide", (sidebarAfter ?? "").includes("Toutes les données sont synchronisées"));
+  check(
+    "la barre latérale repasse « En ligne » et vide",
+    (sidebarAfter ?? "").includes("Toutes les données sont synchronisées")
+  );
 
   // --- nettoyage ---------------------------------------------------------------
   if (createdStudent) await prisma.student.delete({ where: { id: createdStudent.id } });
@@ -234,4 +336,12 @@ async function main() {
   if (failed.length) process.exitCode = 1;
 }
 
-main().catch((e) => { console.error(e); process.exitCode = 1; }).finally(() => prisma.$disconnect());
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await stopServer().catch(() => {});
+    await prisma.$disconnect();
+  });

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatAmount, formatDate } from "@/lib/format";
 import { Badge } from "@/components/ui";
-import { bulkPreviewRemindersAction } from "@/lib/actions/students";
+import { prepareReminders } from "@/lib/reminder-client";
 import { PayButton } from "@/components/pay-button";
 import { WhatsAppQueueModal, type PreparedReminder } from "@/components/whatsapp-queue-modal";
 
@@ -21,7 +21,7 @@ export type LateRow = {
   lastReminder: { sentAt: Date; status: string } | null;
 };
 
-export function LateTable({ rows }: { rows: LateRow[] }) {
+export function LateTable({ rows, offline = false }: { rows: LateRow[]; offline?: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const [queue, setQueue] = useState<{ items: PreparedReminder[]; skipped: number } | null>(null);
@@ -40,12 +40,8 @@ export function LateTable({ rows }: { rows: LateRow[] }) {
   }
 
   function sendSelected() {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      alert("Rappels WhatsApp indisponibles hors ligne.");
-      return;
-    }
     startTransition(async () => {
-      const res = await bulkPreviewRemindersAction(Array.from(selected));
+      const res = await prepareReminders(Array.from(selected));
       setQueue({ items: res.prepared, skipped: res.skipped });
       setSelected(new Set());
     });
@@ -148,13 +144,15 @@ export function LateTable({ rows }: { rows: LateRow[] }) {
           >
             Rappel WhatsApp
           </button>
-          <a
-            href={`/api/retards/pdf?ids=${Array.from(selected).join(",")}`}
-            target="_blank"
-            className="h-8 rounded-lg border border-(--color-border-strong) bg-white px-3 text-[12.5px] font-semibold flex items-center no-underline hover:no-underline"
-          >
-            Liste d&apos;appels (PDF)
-          </a>
+          {!offline && (
+            <a
+              href={`/api/retards/pdf?ids=${Array.from(selected).join(",")}`}
+              target="_blank"
+              className="h-8 rounded-lg border border-(--color-border-strong) bg-white px-3 text-[12.5px] font-semibold flex items-center no-underline hover:no-underline"
+            >
+              Liste d&apos;appels (PDF)
+            </a>
+          )}
         </div>
       )}
       {queue && <WhatsAppQueueModal items={queue.items} skipped={queue.skipped} onClose={() => setQueue(null)} />}

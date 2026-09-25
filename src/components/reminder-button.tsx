@@ -2,11 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { previewReminderAction, confirmReminderSentAction } from "@/lib/actions/students";
+import { prepareReminder, confirmReminderSent, type PreparedReminder } from "@/lib/reminder-client";
 import { buildWhatsAppLink } from "@/lib/whatsapp-link";
 import { cn } from "@/lib/cn";
-
-type Preview = { studentId: string; trancheId: string | null; phone: string; message: string; label: string };
 
 export function ReminderButton({
   studentId,
@@ -18,17 +16,15 @@ export function ReminderButton({
   label?: string;
 }) {
   const [pending, startTransition] = useTransition();
-  const [preview, setPreview] = useState<Preview | null>(null);
+  const [preview, setPreview] = useState<PreparedReminder | null>(null);
   const [text, setText] = useState("");
   const router = useRouter();
 
   function open() {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
-      alert("Rappel WhatsApp indisponible hors ligne.");
-      return;
-    }
     startTransition(async () => {
-      const res = await previewReminderAction(studentId);
+      // Works with or without a network: without one the message is computed
+      // from the copy of the school kept on the device.
+      const res = await prepareReminder(studentId);
       if ("error" in res) {
         alert(res.error);
         return;
@@ -43,8 +39,9 @@ export function ReminderButton({
     // Data (phone + text) is already loaded, so this is a plain synchronous
     // click — the browser never treats it as an unsolicited popup.
     window.open(buildWhatsAppLink(preview.phone, text), "_blank");
+    const item = preview;
     startTransition(async () => {
-      await confirmReminderSentAction(preview.studentId, preview.trancheId, text);
+      await confirmReminderSent(item, text);
       router.refresh();
     });
     setPreview(null);

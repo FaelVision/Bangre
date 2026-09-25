@@ -20,11 +20,18 @@ export function ListFilters({
   currentParams,
   searchParam,
   selects,
+  onNavigate,
 }: {
   basePath: string;
   currentParams: Record<string, string | undefined>;
   searchParam?: { name: string; placeholder: string; value?: string };
   selects: SelectFilter[];
+  /**
+   * Where a filter change goes. The offline shell renders the page itself from
+   * the local copy, so it takes the href instead of letting the router ask a
+   * server that is not there.
+   */
+  onNavigate?: (href: string) => void;
 }) {
   const router = useRouter();
   const searchRef = useRef<HTMLInputElement>(null);
@@ -37,7 +44,9 @@ export function ListFilters({
       if (val && val.trim() !== "") params.set(key, val);
     }
     const query = params.toString();
-    router.push(query ? `${basePath}?${query}` : basePath);
+    const href = query ? `${basePath}?${query}` : basePath;
+    if (onNavigate) onNavigate(href);
+    else router.push(href);
   }
 
   return (

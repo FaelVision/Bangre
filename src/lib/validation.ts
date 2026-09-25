@@ -1,12 +1,9 @@
 import { z } from "zod";
+import { normalizePhone } from "@/lib/phone";
 
 export const phoneRegex = /^\+226\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/;
 
-export function normalizePhone(raw: string) {
-  const digits = raw.replace(/[^\d]/g, "");
-  const local = digits.startsWith("226") ? digits.slice(3) : digits;
-  return `+226${local}`;
-}
+export { normalizePhone };
 
 /** Blank strings from optional form fields should read as "not provided", not fail min-length checks. */
 const blankToUndefined = (value: unknown) => (typeof value === "string" && value.trim() === "" ? undefined : value);

@@ -130,6 +130,54 @@ export function computeStudentSummary(
   };
 }
 
+/**
+ * How a received amount is spread over the tranches still due. Shared by the
+ * server (which persists the allocations, `payments-core.ts`) and by the
+ * device (which shows the very same breakdown for a payment taken offline,
+ * before the server has seen it) so both tell the user the same thing.
+ *
+ * Tranche mode pays the selected tranches in full; partial mode fills the
+ * unpaid tranches in order until the amount runs out.
+ */
+export type PaymentAllocationResult =
+  | { ok: true; allocations: { trancheId: string; amount: number }[]; amount: number }
+  | { ok: false; error: string };
+
+export function allocatePayment(
+  trancheStates: TrancheState[],
+  input: { mode: "tranches" | "partial"; trancheIds: string[]; amount: number }
+): PaymentAllocationResult {
+  const unpaid = trancheStates
+    .filter((t) => t.remaining > 0)
+    .sort((a, b) => a.tranche.order - b.tranche.order);
+
+  const allocations: { trancheId: string; amount: number }[] = [];
+
+  if (input.mode === "tranches") {
+    const wanted = new Set(input.trancheIds);
+    for (const t of unpaid) {
+      if (wanted.has(t.tranche.id)) allocations.push({ trancheId: t.tranche.id, amount: t.remaining });
+    }
+    if (allocations.length === 0) return { ok: false, error: "Sélectionnez au moins une tranche." };
+  } else {
+    let budget = Math.round(input.amount);
+    if (budget <= 0) return { ok: false, error: "Montant invalide." };
+    for (const t of unpaid) {
+      if (budget <= 0) break;
+      const take = Math.min(budget, t.remaining);
+      if (take > 0) {
+        allocations.push({ trancheId: t.tranche.id, amount: take });
+        budget -= take;
+      }
+    }
+    if (allocations.length === 0) return { ok: false, error: "Toutes les tranches sont déjà payées." };
+  }
+
+  const amount = allocations.reduce((s, a) => s + a.amount, 0);
+  if (amount <= 0) return { ok: false, error: "Montant invalide." };
+  return { ok: true, allocations, amount };
+}
+
 export const studentQueryInclude = {
   class: { include: { tranches: true } },
   payments: { include: { allocations: true } },

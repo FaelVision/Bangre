@@ -19,6 +19,7 @@ export function AppShell({
   contactName,
   counts,
   children,
+  activePath,
 }: {
   schoolName: string;
   academicYearLabel: string;
@@ -26,9 +27,16 @@ export function AppShell({
   contactName: string;
   counts: ShellCounts;
   children: React.ReactNode;
+  /**
+   * Which page is on screen. The offline shell navigates by itself, without the
+   * router, so it says where it is rather than letting `usePathname` guess from
+   * the address the document was loaded at.
+   */
+  activePath?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
+  const routerPathname = usePathname();
+  const pathname = activePath ?? routerPathname;
 
   // Navigating closes the drawer. Adjusting state during render on a changed
   // value is React's documented alternative to a setState-in-effect here.
@@ -91,6 +99,7 @@ export function AppShell({
         counts={counts}
         open={open}
         onClose={() => setOpen(false)}
+        activePath={pathname}
       />
 
       <div className="flex-1 min-w-0">{children}</div>

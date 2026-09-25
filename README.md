@@ -47,22 +47,32 @@ Tout est idempotent (un rappel `(élève, tranche, déclencheur)` n'est envoyé 
 
 ## Fonctionnement hors ligne
 
-**Consulter.** `public/sw.js` précharge à l'installation le tableau de bord, les classes, les élèves, les retards et les paiements, puis met en cache chaque page visitée (network-first : le réseau d'abord, le cache seulement en repli). Une page jamais consultée affiche `/hors-ligne` plutôt qu'une erreur du navigateur. Les redirections ne sont jamais mises en cache — sinon une session expirée ferait servir l'écran de connexion à la place du tableau de bord.
+Bangre est utilisable **entièrement sans réseau** : la connexion sert à synchroniser, pas à travailler. Trois pièces :
 
-**Saisir.** Ces opérations fonctionnent sans réseau et sont placées dans une file IndexedDB (`src/lib/offline-queue.ts`) :
+**1. Une copie de l'école sur l'appareil.** `GET /api/offline/snapshot` renvoie tout l'établissement (école, année, classes et tranches, élèves, paiements et affectations, rappels) ; le navigateur la range dans IndexedDB (`src/lib/offline-mirror.ts`). Elle est re-téléchargée après chaque écriture acceptée par le serveur, à chaque reconnexion, au démarrage de l'app et au retour au premier plan si elle a plus de 5 minutes, et sinon toutes les 15 minutes tant que l'onglet est visible — une école entière représente un vrai téléchargement sur une connexion mobile. La barre latérale indique son âge (« Copie locale des données : il y a 3 min ») et permet de la rafraîchir à la main.
 
-- enregistrer un paiement (si l'élève a déjà été consulté en ligne, la modale garde le détail des tranches, mis en cache localement ; sinon elle bascule en montant libre) ;
-- ajouter un élève ;
+**2. Une application hors ligne qui lit cette copie.** `public/sw.js` sert `/hors-ligne` — le shell `src/components/offline-app.tsx` — pour **n'importe quelle page de l'app demandée sans réseau, y compris jamais visitée sur cet appareil**. Le shell lit l'URL, rend l'écran correspondant depuis IndexedDB et intercepte les liens pour naviguer localement : tableau de bord, classes, élèves d'une classe, liste des élèves, fiche élève, ajout et modification d'un élève, retards, paiements & reçus. Les chiffres sont calculés par `src/lib/offline-queries.ts`, qui applique les mêmes règles que `src/lib/queries.ts` côté serveur — l'égalité des deux est vérifiée sur la base de démonstration par `tests/integration/offline-parity.test.ts`.
+
+Le service worker précharge le shell **et les fichiers dont il a besoin pour démarrer** (ses scripts, ses feuilles de style et les polices qu'elles référencent) : sans cela le document sortirait du cache sans pouvoir charger son propre JavaScript. Les pages visitées restent mises en cache (network-first) et servent de repli pour les écrans que le shell ne rend pas. Les redirections ne sont jamais mises en cache — sinon une session expirée ferait servir l'écran de connexion à la place du tableau de bord.
+
+**3. Une file de sortie pour les saisies.** Fonctionnent sans réseau et sont mises en file dans IndexedDB (`src/lib/offline-queue.ts`) :
+
+- enregistrer un paiement — avec le **détail réel des tranches** pour n'importe quel élève, reconstruit depuis la copie locale, pas seulement un montant libre ;
+- ajouter un élève (le matricule proposé suit ceux déjà connus de l'appareil) ;
 - modifier une fiche élève ;
-- envoyer un rappel WhatsApp (mis en file, ré-vérifié puis envoyé à la reconnexion).
+- envoyer un rappel WhatsApp : le message est composé localement par `src/lib/reminder-message.ts` (le même code que le serveur), le lien `wa.me` s'ouvre, et l'envoi est enregistré à la synchronisation.
 
-La barre latérale montre en permanence l'état (« En ligne » / « Hors ligne »), le nombre d'enregistrements en attente et leur libellé.
+Ces saisies sont **rejouées sur la copie locale** (`applyPendingOperations`) : un paiement encaissé hors ligne apparaît aussitôt sur la fiche de l'élève, dans le total de la classe, sur le tableau de bord et dans le journal (marqué « Hors ligne », sans numéro de reçu). La barre latérale montre en permanence l'état (« En ligne » / « Hors ligne »), le nombre d'enregistrements en attente et leur libellé.
 
-**Synchroniser.** Au retour du réseau, la file est rejouée dans l'ordre contre `/api/sync`, automatiquement (événement `online`, plus l'API Background Sync quand le navigateur la propose) ou via « Synchroniser maintenant ». Le serveur applique exactement les mêmes règles qu'en ligne — les écritures passent par `students-core.ts`, `payments-core.ts` et `reminders-core.ts`, partagés avec les Server Actions — et les reçus sont numérotés côté serveur au moment de la synchronisation.
+**Synchroniser.** Au retour du réseau, la file est rejouée dans l'ordre contre `/api/sync` — automatiquement (événement `online`, plus l'API Background Sync quand le navigateur la propose) ou via « Synchroniser maintenant » — puis la copie locale est re-téléchargée : l'appareil voit alors ses propres écritures telles que le serveur les a enregistrées (numéros de reçu, matricules, identifiants) et ce que les autres postes ont fait entre-temps. Le serveur applique exactement les mêmes règles qu'en ligne : les écritures passent par `students-core.ts`, `payments-core.ts` et `reminders-core.ts`, partagés avec les Server Actions.
 
 Une entrée que le serveur refuse définitivement (matricule en double, élève supprimé entre-temps) est retirée de la file avec son motif conservé, pour qu'une seule ligne fautive ne bloque pas indéfiniment les suivantes. Une panne réseau, elle, interrompt la reprise et laisse tout en attente.
 
-C'est une implémentation pragmatique : elle couvre la saisie au guichet sans connexion, pas une architecture offline-first complète. En particulier, il n'y a pas de résolution de conflits multi-appareils — deux postes qui modifient la même fiche hors ligne appliqueront leurs versions dans l'ordre d'arrivée, la dernière l'emportant. La consultation hors ligne se limite aux pages déjà visitées ; les exports PDF, le passage d'année et l'administration restent indisponibles hors ligne.
+**Ce qui reste en ligne** (le shell l'annonce clairement au lieu d'échouer) : les exports PDF / Excel et les reçus, l'import de listes d'élèves, la création et la configuration d'une classe, le passage d'année, l'abonnement et l'administration. Il n'y a pas non plus de résolution de conflits multi-appareils : deux postes qui modifient la même fiche hors ligne appliqueront leurs versions dans l'ordre d'arrivée, la dernière l'emportant.
+
+`experimental.useOffline` (Next 16) n'est **pas** activé volontairement : il ferait attendre indéfiniment une Server Action lancée sans réseau, au lieu de la laisser échouer immédiatement pour tomber dans la file locale.
+
+**Tester.** `npm run build && npx tsx _offline-test.ts` lance un vrai navigateur, se connecte, **arrête le serveur**, consulte des pages jamais visitées, encaisse un paiement, ajoute un élève, relance le serveur et vérifie que tout est arrivé en base.
 
 ## Simplifications par rapport à la maquette
 
@@ -76,8 +86,11 @@ C'est une implémentation pragmatique : elle couvre la saisie au guichet sans co
 prisma/schema.prisma       modèle de données (école, classes, tranches, élèves, paiements…)
 prisma/seed.ts             jeu de données de démonstration
 src/lib/                   logique métier (tuition.ts, payments-core.ts…), accès aux données, actions serveur
+src/lib/offline-*.ts       copie locale de l'école : snapshot, file de sortie, requêtes hors ligne
 src/components/            composants partagés (UI, modale de paiement, tableau élèves…)
+src/components/views/      écrans partagés entre les pages serveur et l'application hors ligne
 src/app/(auth)/            connexion, inscription, abonnement
 src/app/(app)/             application principale (sidebar + toutes les pages protégées)
-src/app/api/                endpoints PDF/CSV et synchronisation hors ligne
+src/app/api/                endpoints PDF/CSV, snapshot hors ligne et synchronisation
+src/app/hors-ligne/        l'application rendue depuis la copie locale (servie par le service worker)
 ```

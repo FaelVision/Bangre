@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { OfflineStatusCard } from "@/components/offline-status";
 import { logoutAction } from "@/lib/actions/auth";
+import { clearMirror } from "@/lib/offline-mirror";
 
 type NavItem = {
   href: string;
@@ -22,6 +23,7 @@ export function Sidebar({
   counts,
   open = false,
   onClose,
+  activePath,
 }: {
   schoolName: string;
   academicYearLabel: string;
@@ -31,8 +33,11 @@ export function Sidebar({
   /** Drawer state below `lg`; ignored on large screens where the column is permanent. */
   open?: boolean;
   onClose?: () => void;
+  /** Set by the offline shell, which routes without the Next.js router. */
+  activePath?: string;
 }) {
-  const pathname = usePathname();
+  const routerPathname = usePathname();
+  const pathname = activePath ?? routerPathname;
 
   const items: NavItem[] = [
     { href: "/tableau-de-bord", label: "Tableau de bord" },
@@ -108,7 +113,8 @@ export function Sidebar({
           {contactInitials}
         </span>
         <span className="text-[13px] text-(--color-text-mutedalt) flex-1 truncate">{contactName}</span>
-        <form action={logoutAction}>
+        {/* Signing out takes the local copy of the school with it. */}
+        <form action={logoutAction} onSubmit={() => void clearMirror()}>
           <button type="submit" className="text-[12px] text-(--color-text-muted) hover:text-(--color-danger-text) cursor-pointer">
             Quitter
           </button>

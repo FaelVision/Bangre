@@ -5,26 +5,11 @@ import { useRouter } from "next/navigation";
 import { formatAmount, formatCFA, formatDate } from "@/lib/format";
 import { getPaymentContextAction, recordPaymentAction, searchStudentsAction } from "@/lib/actions/payments";
 import { enqueuePayment, savePaymentContext, loadPaymentContext } from "@/lib/offline-queue";
+import { localPaymentContext, localStudentSearch, type PaymentContext } from "@/lib/payment-client";
+import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 import { DateInput } from "@/components/date-input";
 
-type TrancheOption = {
-  id: string;
-  label: string;
-  kind: string;
-  amount: number;
-  remaining: number;
-  dueDate: string;
-  status: "paid" | "partial" | "late" | "pending";
-  daysLate: number;
-};
-
-type Context = {
-  student: { id: string; firstName: string; lastName: string; matricule: string; className: string };
-  schoolName: string;
-  receivedByDefault: string;
-  nextReceiptNumber: number;
-  tranches: TrancheOption[];
-};
+type Context = PaymentContext;
 
 export function PaymentModal({
   initialStudentId,
@@ -75,10 +60,24 @@ export function PaymentModal({
     []
   );
 
-  /** Offline (or once the network turns out to be unreachable): reuse the last
-   *  tranche state we cached for this student so the full picker still works. */
+  /**
+   * Offline, or once the network turns out to be unreachable: rebuild the same
+   * context from the copy of the school kept on this device. Any student is
+   * covered, not just those already opened online; the per-student cache from
+   * earlier versions is only a last resort before the free-amount form.
+   */
   const resolveOfflineContext = useCallback(
     async (id: string) => {
+      const local = await localPaymentContext(id);
+      if (local && "error" in local) {
+        setErrorMsg(local.error);
+        setContext("error");
+        return;
+      }
+      if (local) {
+        applyContext(local, true);
+        return;
+      }
       const cached = await loadPaymentContext(id);
       if (cached && cached.context) {
         applyContext(cached.context as Context, true);
@@ -133,8 +132,16 @@ export function PaymentModal({
         setMatches([]);
         return;
       }
-      const res = await searchStudentsAction(query);
-      setMatches(res);
+      // The same search, against the device copy when the server is out of reach.
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setMatches(await localStudentSearch(query));
+        return;
+      }
+      try {
+        setMatches(await searchStudentsAction(query));
+      } catch {
+        setMatches(await localStudentSearch(query));
+      }
     }, 250);
     return () => clearTimeout(t);
   }, [query, studentId]);
@@ -184,6 +191,7 @@ export function PaymentModal({
         const res = await recordPaymentAction(payload);
         if (res.ok) {
           setResult(res);
+          scheduleSnapshotRefresh();
           router.refresh();
         } else {
           setErrorMsg(res.error);
@@ -317,8 +325,8 @@ export function PaymentModal({
               <>
                 {contextIsCached && (
                   <div className="rounded-lg border border-(--color-gold-border) bg-(--color-gold-bg) text-(--color-gold-text) text-[12.5px] px-3.5 py-2.5 mb-4 leading-relaxed">
-                    Hors ligne : tranches affichées d&apos;après la dernière consultation de cet élève. Le paiement est
-                    mis en file et le serveur recalcule la répartition exacte à la synchronisation.
+                    Hors ligne : tranches affichées d&apos;après les données de cet appareil. Le paiement est mis en
+                    file et le serveur recalcule la répartition exacte à la synchronisation.
                   </div>
                 )}
                 <div className="text-[12.5px] font-semibold text-(--color-text-secondary) mb-2">

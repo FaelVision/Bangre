@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { bulkPreviewRemindersAction } from "@/lib/actions/students";
+import { prepareReminders } from "@/lib/reminder-client";
 import { WhatsAppQueueModal, type PreparedReminder } from "@/components/whatsapp-queue-modal";
 
 export function SendAllRemindersButton({ students }: { students: { id: string; label: string }[] }) {
@@ -12,12 +12,8 @@ export function SendAllRemindersButton({ students }: { students: { id: string; l
     <>
       <button
         onClick={() => {
-          if (typeof navigator !== "undefined" && !navigator.onLine) {
-            alert("Rappels WhatsApp indisponibles hors ligne.");
-            return;
-          }
           startTransition(async () => {
-            const res = await bulkPreviewRemindersAction(students.map((s) => s.id));
+            const res = await prepareReminders(students.map((s) => s.id));
             setQueue({ items: res.prepared, skipped: res.skipped });
           });
         }}
