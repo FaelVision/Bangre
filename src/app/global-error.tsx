@@ -1,23 +1,38 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import {
+  canReloadIntoOfflineApp,
+  isConnectivityError,
+  reloadIntoOfflineApp,
+  reportClientError,
+} from "@/lib/error-recovery";
 
-export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+  // The network going away is not an error to show: the same address, loaded
+  // again, opens in the offline app.
+  const network = isConnectivityError(error);
+  const [recovering] = useState(() => network && canReloadIntoOfflineApp());
+
   useEffect(() => {
+    if (recovering) return reloadIntoOfflineApp();
+    if (network) return;
     // Report to the admin error log. Fire-and-forget: the page is already
     // broken, a failed report must not make it worse.
-    fetch("/api/errors/client", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: error.message || "Erreur inconnue",
-        stack: error.stack,
-        digest: error.digest,
-        path: typeof window !== "undefined" ? window.location.pathname : undefined,
-      }),
-      keepalive: true,
-    }).catch(() => {});
-  }, [error]);
+    reportClientError(error);
+  }, [error, network, recovering]);
+
+  if (recovering) {
+    return (
+      <html lang="fr">
+        <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", background: "#EFEAE1", color: "#4A443C" }}>
+          <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+            Connexion perdue — ouverture des données de cet appareil…
+          </div>
+        </body>
+      </html>
+    );
+  }
 
   return (
     <html lang="fr">
@@ -33,10 +48,13 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
               padding: 28,
             }}
           >
-            <div style={{ fontSize: 19, fontWeight: 600, letterSpacing: "-0.01em" }}>Une erreur est survenue</div>
+            <div style={{ fontSize: 19, fontWeight: 600, letterSpacing: "-0.01em" }}>
+              {network ? "Pas de connexion au serveur" : "Une erreur est survenue"}
+            </div>
             <p style={{ fontSize: 14, lineHeight: 1.6, color: "#4A443C", marginTop: 10 }}>
-              La page n&apos;a pas pu s&apos;afficher. L&apos;incident vient d&apos;être signalé automatiquement à
-              l&apos;administrateur — vos données ne sont pas affectées.
+              {network
+                ? "Vos saisies sont gardées sur cet appareil et partiront au retour du réseau. Réessayez dans un instant."
+                : "La page n'a pas pu s'afficher. L'incident vient d'être signalé automatiquement à l'administrateur — vos données ne sont pas affectées."}
             </p>
             {error.digest && (
               <div
@@ -56,7 +74,9 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
             )}
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button
-                onClick={reset}
+                // `retry` fetches the page again; `reset` only re-rendered the
+                // same broken state, so the button never helped.
+                onClick={() => (network ? window.location.reload() : retry())}
                 style={{
                   flex: 1,
                   height: 42,

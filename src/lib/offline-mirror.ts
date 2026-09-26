@@ -4,6 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { getDb, MIRROR_STORE } from "@/lib/offline-db";
 import { applyPendingOperations, reviveSnapshot, type MirrorData } from "@/lib/offline-data";
 import { flushQueue, listPending, QUEUE_CHANGED } from "@/lib/offline-queue";
+import { isOffline, reportReachable, reportUnreachable } from "@/lib/connectivity";
+
+/**
+ * A server that has not started answering after this long is not there. The
+ * download itself gets much longer — a whole school over a slow phone
+ * connection takes a while. Without any limit, one hung download blocked every
+ * later refresh until the page was reloaded.
+ */
+const SNAPSHOT_ANSWER_TIMEOUT_MS = 30_000;
+const SNAPSHOT_DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * The local copy of the school, kept on the device.
@@ -99,9 +109,22 @@ let refreshing: Promise<RefreshResult> | null = null;
 export function refreshSnapshot(): Promise<RefreshResult> {
   if (refreshing) return refreshing;
 
+  if (isOffline()) return Promise.resolve({ ok: false, reason: "offline" });
+
   refreshing = (async (): Promise<RefreshResult> => {
+    const controller = new AbortController();
+    let timer = setTimeout(() => controller.abort(), SNAPSHOT_ANSWER_TIMEOUT_MS);
+    let answered = false;
     try {
-      const res = await fetch("/api/offline/snapshot", { cache: "no-store", credentials: "same-origin" });
+      const res = await fetch("/api/offline/snapshot", {
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: controller.signal,
+      });
+      answered = true;
+      reportReachable();
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), SNAPSHOT_DOWNLOAD_TIMEOUT_MS);
       if (res.status === 401 || res.status === 403) return { ok: false, reason: "auth" };
       if (!res.ok) return { ok: false, reason: "error" };
       const body = await res.json();
@@ -109,8 +132,10 @@ export function refreshSnapshot(): Promise<RefreshResult> {
       await saveSnapshot(body);
       return { ok: true };
     } catch {
+      if (!answered) reportUnreachable();
       return { ok: false, reason: "offline" };
     } finally {
+      clearTimeout(timer);
       refreshing = null;
     }
   })();
@@ -134,7 +159,7 @@ let scheduled: ReturnType<typeof setTimeout> | null = null;
  */
 export function scheduleSnapshotRefresh(delayMs = 1500) {
   if (typeof window === "undefined") return;
-  if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  if (isOffline()) return;
   if (scheduled) clearTimeout(scheduled);
   scheduled = setTimeout(() => {
     scheduled = null;

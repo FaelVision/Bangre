@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui";
 import { bulkChangeClassAction } from "@/lib/actions/students";
 import { prepareReminders } from "@/lib/reminder-client";
 import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
+import { isNetworkError, withNetwork } from "@/lib/connectivity";
 import { WhatsAppQueueModal, type PreparedReminder } from "@/components/whatsapp-queue-modal";
 import type { StudentSummary } from "@/lib/tuition";
 
@@ -48,6 +49,7 @@ export function StudentsTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const [moveTarget, setMoveTarget] = useState("");
+  const [moveError, setMoveError] = useState<string | null>(null);
   const [queue, setQueue] = useState<{ items: PreparedReminder[]; skipped: number } | null>(null);
   const router = useRouter();
 
@@ -73,8 +75,16 @@ export function StudentsTable({
 
   function changeClass() {
     if (!moveTarget) return;
+    setMoveError(null);
     startTransition(async () => {
-      await bulkChangeClassAction(Array.from(selected), moveTarget);
+      try {
+        await withNetwork(() => bulkChangeClassAction(Array.from(selected), moveTarget), 15000);
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        // Moving students is not queued: say so rather than breaking the page.
+        setMoveError("Pas de connexion : le changement de classe se fait en ligne. Réessayez au retour du réseau.");
+        return;
+      }
       setSelected(new Set());
       setMoveTarget("");
       scheduleSnapshotRefresh();
@@ -189,6 +199,7 @@ export function StudentsTable({
               </button>
             </div>
           )}
+          {moveError && <span className="text-[12.5px] text-(--color-danger-text)">{moveError}</span>}
         </div>
       )}
       {queue && <WhatsAppQueueModal items={queue.items} skipped={queue.skipped} onClose={() => setQueue(null)} />}

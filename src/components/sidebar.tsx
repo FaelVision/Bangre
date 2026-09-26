@@ -1,12 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { OfflineStatusCard } from "@/components/offline-status";
 import { InstallAppButton } from "@/components/install-app";
-import { logoutAction } from "@/lib/actions/auth";
+import { probe } from "@/lib/connectivity";
 import { clearMirror } from "@/lib/offline-mirror";
 import { forgetOfflinePreparation } from "@/lib/offline-ready";
 
@@ -116,16 +117,55 @@ export function Sidebar({
           {contactInitials}
         </span>
         <span className="text-[13px] text-(--color-text-mutedalt) flex-1 truncate">{contactName}</span>
-        {/* Signing out takes the local copy of the school with it. */}
-        <form action={logoutAction} onSubmit={() => {
-            forgetOfflinePreparation();
-            void clearMirror();
-          }}>
-          <button type="submit" className="text-[12px] text-(--color-text-muted) hover:text-(--color-danger-text) cursor-pointer">
-            Quitter
-          </button>
-        </form>
+        <LogoutButton />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Signing out takes the local copy of the school with it — so it is only done
+ * once the server has been reached. Offline, the copy would be erased while
+ * the session stayed open: the worst of both.
+ */
+function LogoutButton() {
+  const [state, setState] = useState<"idle" | "checking" | "offline">("idle");
+
+  async function logout() {
+    setState("checking");
+    if (!(await probe())) {
+      setState("offline");
+      return;
+    }
+    forgetOfflinePreparation();
+    await clearMirror();
+    // A route handler, not a page: a full request clears the cookie and redirects.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/deconnexion");
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => void logout()}
+        disabled={state === "checking"}
+        className="text-[12px] text-(--color-text-muted) hover:text-(--color-danger-text) cursor-pointer disabled:opacity-50"
+      >
+        Quitter
+      </button>
+      {state === "offline" && (
+        <div className="absolute bottom-full right-0 mb-2 w-[210px] rounded-lg border border-(--color-gold-border) bg-(--color-gold-bg) p-2.5 text-[11.5px] leading-snug text-(--color-text-secondary) shadow-lg">
+          Pas de connexion : la déconnexion se fait en ligne, pour ne pas effacer les données de cet appareil.
+          <button
+            type="button"
+            onClick={() => setState("idle")}
+            className="block mt-1.5 font-semibold text-(--color-primary) cursor-pointer"
+          >
+            Compris
+          </button>
+        </div>
+      )}
     </div>
   );
 }

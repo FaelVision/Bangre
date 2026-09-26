@@ -4,7 +4,8 @@ import { useEffect, useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { formatAmount, formatCFA, formatDate } from "@/lib/format";
 import { getPaymentContextAction, recordPaymentAction, searchStudentsAction } from "@/lib/actions/payments";
-import { enqueuePayment, savePaymentContext, loadPaymentContext } from "@/lib/offline-queue";
+import { enqueuePayment, savePaymentContext, loadPaymentContext, queueId } from "@/lib/offline-queue";
+import { isOffline, withNetwork } from "@/lib/connectivity";
 import {
   localPaymentConfirmationLink,
   localPaymentContext,
@@ -98,13 +99,13 @@ export function PaymentModal({
   const loadContext = useCallback((id: string) => {
     // Offline, or a student created on this device that the server has not
     // received yet: the device copy is the only one that knows them.
-    if (isLocalId(id) || (typeof navigator !== "undefined" && !navigator.onLine)) {
+    if (isLocalId(id) || isOffline()) {
       void resolveOfflineContext(id);
       return;
     }
     startTransition(async () => {
       try {
-        const ctx = await getPaymentContextAction(id);
+        const ctx = await withNetwork(() => getPaymentContextAction(id), 8000);
         if ("error" in ctx) {
           setErrorMsg(ctx.error ?? "Erreur inconnue.");
           setContext("error");
@@ -113,9 +114,9 @@ export function PaymentModal({
           void savePaymentContext(id, ctx);
         }
       } catch {
-        // No network reachable at all (not just a slow/offline flag) — reuse the
-        // cached tranche state if we have it, else the reduced offline form.
-        void resolveOfflineContext(id);
+        // The server did not answer in time, or not at all: the copy on the
+        // device knows this student too.
+        await resolveOfflineContext(id);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,12 +142,12 @@ export function PaymentModal({
         return;
       }
       // The same search, against the device copy when the server is out of reach.
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
+      if (isOffline()) {
         setMatches(await localStudentSearch(query));
         return;
       }
       try {
-        setMatches(await searchStudentsAction(query));
+        setMatches(await withNetwork(() => searchStudentsAction(query), 5000));
       } catch {
         setMatches(await localStudentSearch(query));
       }
@@ -193,22 +194,26 @@ export function PaymentModal({
      * be told at once — the confirmation is composed from the device copy,
      * which already counts this payment.
      */
+    // One id for both paths: if the online attempt reached the server but its
+    // answer was lost, the queued copy is recognised at sync, not paid twice.
+    const ref = queueId();
+
     const queueOffline = async () => {
-      await enqueuePayment(payload, label);
+      await enqueuePayment(payload, label, ref);
       const whatsappUrl = notifyWhatsapp
         ? await localPaymentConfirmationLink(studentId, amount, date).catch(() => null)
         : null;
       setResult({ paymentId: "offline", receiptNumber: 0, amount, whatsappUrl });
     };
 
-    if (isLocalId(studentId) || (typeof navigator !== "undefined" && !navigator.onLine)) {
+    if (isLocalId(studentId) || isOffline()) {
       await queueOffline();
       return;
     }
 
     startTransition(async () => {
       try {
-        const res = await recordPaymentAction(payload);
+        const res = await withNetwork(() => recordPaymentAction({ ...payload, clientRef: `sync:${ref}` }), 15000);
         if (res.ok) {
           setResult(res);
           scheduleSnapshotRefresh();

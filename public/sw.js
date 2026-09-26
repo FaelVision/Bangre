@@ -1,5 +1,5 @@
 /* Bangre offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v7";
+const CACHE_VERSION = "v8";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 
@@ -133,6 +133,11 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   if (event.data === "skip-waiting") self.skipWaiting();
+  // The page learned it first (a form that hung, a probe that answered).
+  if (event.data?.type === "bangre:reachability") {
+    if (event.data.reachable) markReachable();
+    else markUnreachable();
+  }
   // The app asks for the full download after signing in and on each visit;
   // the answer goes back on the port it sent, if any.
   if (event.data === "bangre:refresh-shell" || event.data?.type === "bangre:prepare-offline") {
@@ -161,30 +166,90 @@ function withTimeout(promise, ms) {
 }
 
 /**
+ * Once a request has failed, the next ones would fail the same way — after
+ * the same wait. So the worker remembers: while the server is known to be out
+ * of reach, pages come straight from the device (no 6 s wait per click, which
+ * used to be 12 s: the data request, then the page), and a light probe in the
+ * background notices when the server answers again.
+ */
+const UNREACHABLE_MAX_MS = 2 * 60 * 1000;
+const PROBE_TIMEOUT_MS = 5000;
+let unreachableSince = 0;
+let probing = null;
+
+function markUnreachable() {
+  if (!unreachableSince) unreachableSince = Date.now();
+}
+
+function markReachable() {
+  unreachableSince = 0;
+}
+
+function knownUnreachable() {
+  if (!unreachableSince) return false;
+  // Never trust an old verdict for long: past this, try the network again.
+  if (Date.now() - unreachableSince > UNREACHABLE_MAX_MS) {
+    unreachableSince = 0;
+    return false;
+  }
+  return true;
+}
+
+function probeServer() {
+  if (probing) return probing;
+  probing = withTimeout(fetch("/api/ping", { cache: "no-store" }), PROBE_TIMEOUT_MS)
+    .then(
+      () => markReachable(),
+      () => {
+        unreachableSince = Date.now(); // still down: keep the verdict fresh
+      }
+    )
+    .finally(() => {
+      probing = null;
+    });
+  return probing;
+}
+
+async function offlineShell(url) {
+  const cache = await caches.open(PAGES_CACHE);
+  const shell = await cache.match(SHELL_URL);
+  if (shell && !AUTH_PAGES_RE.test(url.pathname)) return shell;
+
+  return new Response(
+    "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">" +
+      "<title>Bangre — hors ligne</title>" +
+      "<body style=\"font-family:system-ui;padding:40px;color:#333\"><h2>Pas de connexion</h2>" +
+      "<p>Cette page a besoin d'internet. Si Bangre a déjà été ouvert sur cet appareil, " +
+      "<a href=\"/tableau-de-bord\">ouvrez le tableau de bord</a> : il fonctionne hors ligne.</p>",
+    { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
+  );
+}
+
+/**
  * Network-first for pages: the secretary must see live figures whenever there
  * is a connection. Without one, the offline app answers for every page of the
  * app — never an old copy of a server page, whose data is stale and whose
  * scripts may no longer exist.
  */
-async function handleNavigation(request) {
+async function handleNavigation(event) {
+  const { request } = event;
   const url = new URL(request.url);
+
+  if (knownUnreachable() && !AUTH_PAGES_RE.test(url.pathname)) {
+    event.waitUntil(probeServer());
+    return offlineShell(url);
+  }
+
   const network = fetch(request);
   network.catch(() => {});
 
   try {
-    return await withTimeout(network, NAVIGATION_TIMEOUT_MS);
+    const res = await withTimeout(network, NAVIGATION_TIMEOUT_MS);
+    markReachable();
+    return res;
   } catch {
-    const cache = await caches.open(PAGES_CACHE);
-    const shell = await cache.match(SHELL_URL);
-    if (shell && !AUTH_PAGES_RE.test(url.pathname)) return shell;
-
-    return new Response(
-      "<!doctype html><meta charset=utf-8><title>Bangre — hors ligne</title>" +
-        "<body style=\"font-family:system-ui;padding:40px;color:#333\"><h2>Pas de connexion</h2>" +
-        "<p>Cette page a besoin d'internet. Si Bangre a déjà été ouvert sur cet appareil, " +
-        "<a href=\"/tableau-de-bord\">ouvrez le tableau de bord</a> : il fonctionne hors ligne.</p>",
-      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
-    );
+    markUnreachable();
+    return offlineShell(url);
   }
 }
 
@@ -193,10 +258,23 @@ async function handleNavigation(request) {
  * no internet those requests hang instead of failing; cut them short so Next
  * falls back to a normal page load, which the offline app then answers.
  */
-async function handleRsc(request) {
+async function handleRsc(event) {
+  const { request } = event;
+  // Prefetches are guesses about the next click: never let them decide that
+  // the server is gone, and never spend anything on them once it is.
+  const prefetch = request.headers.get("Next-Router-Prefetch") === "1";
+
+  if (knownUnreachable()) {
+    if (!prefetch) event.waitUntil(probeServer());
+    return Response.error();
+  }
+
   try {
-    return await withTimeout(fetch(request), NAVIGATION_TIMEOUT_MS);
+    const res = await withTimeout(fetch(request), NAVIGATION_TIMEOUT_MS);
+    markReachable();
+    return res;
   } catch {
+    if (!prefetch) markUnreachable();
     return Response.error();
   }
 }
@@ -207,7 +285,12 @@ async function handleAsset(request) {
   const url = new URL(request.url);
   // The same file is cached under its bare path by `prepareOffline`.
   const cached = (await cache.match(request)) || (await cache.match(url.pathname));
-  const network = fetch(request)
+
+  // Nothing to refresh against while the server is out of reach — and a
+  // request left hanging there would hold up the page that asked for it.
+  if (knownUnreachable()) return cached || new Response("", { status: 504 });
+
+  const network = withTimeout(fetch(request), 15000)
     .then((res) => {
       if (res.ok) cache.put(request, res.clone());
       return res;
@@ -232,12 +315,12 @@ self.addEventListener("fetch", (event) => {
   if (NEVER_CACHE_RE.test(url.pathname)) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(handleNavigation(request));
+    event.respondWith(handleNavigation(event));
     return;
   }
 
   if (url.searchParams.has("_rsc") || request.headers.get("RSC") === "1") {
-    event.respondWith(handleRsc(request));
+    event.respondWith(handleRsc(event));
     return;
   }
 

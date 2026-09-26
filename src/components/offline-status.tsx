@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { currentSchoolId, listQueued, removeQueued, QUEUE_CHANGED, type QueuedEntry } from "@/lib/offline-queue";
 import { MIRROR_CHANGED, refreshIfStale, snapshotAge, syncAll } from "@/lib/offline-mirror";
+import { isOffline, subscribeToConnectivity } from "@/lib/connectivity";
 import {
   getReadiness,
   prepareOfflineDevice,
@@ -23,19 +24,14 @@ export function useOfflineReadiness() {
   return useSyncExternalStore(subscribeToReadiness, getReadiness, () => UNKNOWN_READINESS);
 }
 
-function subscribeToConnectivity(callback: () => void) {
-  window.addEventListener("online", callback);
-  window.addEventListener("offline", callback);
-  return () => {
-    window.removeEventListener("online", callback);
-    window.removeEventListener("offline", callback);
-  };
-}
-
+/**
+ * Whether the server can be reached — not merely whether the browser has a
+ * network interface up (see `connectivity.ts`).
+ */
 export function useOnlineStatus() {
   return useSyncExternalStore(
     subscribeToConnectivity,
-    () => navigator.onLine,
+    () => !isOffline(),
     () => true // server snapshot: assume online until hydrated
   );
 }

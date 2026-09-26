@@ -3,6 +3,7 @@
 import { enqueue, type StudentPayload } from "@/lib/offline-queue";
 import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 import { isLocalId } from "@/lib/offline-data";
+import { isOffline, withNetwork } from "@/lib/connectivity";
 
 /** Shared shape returned by the offline-aware student actions. */
 export type StudentFormState = { error?: string; queued?: string } | undefined;
@@ -48,13 +49,15 @@ export async function runOrQueue(
   // server: a correction to their file has to follow them through the outbox.
   const localStudent = queued.studentId ? isLocalId(queued.studentId) : false;
 
-  if (localStudent || (typeof navigator !== "undefined" && !navigator.onLine)) {
+  if (localStudent || isOffline()) {
     await enqueue(operation, queued.label);
     return { queued: queued.label };
   }
 
   try {
-    const state = await run();
+    // A server that has not answered by then is not going to: the form goes
+    // to the outbox, where the server recognises it if it did arrive after all.
+    const state = await withNetwork(run, 15000);
     // The redirect on success throws, so reaching here means the form came back
     // with an error; nothing new to copy locally in that case.
     if (!state?.error) scheduleSnapshotRefresh();

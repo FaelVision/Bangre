@@ -1,6 +1,14 @@
 "use client";
 
 import { getDb, QUEUE_STORE as STORE, CONTEXT_STORE, MIRROR_STORE } from "@/lib/offline-db";
+import { isOffline, reportReachable, reportUnreachable } from "@/lib/connectivity";
+
+/**
+ * One entry is one small write: an answer slower than this means the network
+ * is hanging. Without a limit, a hung replay kept the outbox locked (`flushing`)
+ * until the page was reloaded, and nothing was ever sent.
+ */
+const SYNC_TIMEOUT_MS = 20_000;
 
 /**
  * Outbox of writes captured while offline. Everything the secretary does at the
@@ -67,7 +75,7 @@ export const QUEUE_CHANGED = "bangre:queue-changed";
  * over plain http on the school's local network — so it is missing exactly
  * where the offline queue matters most. Fall back to a random local id.
  */
-function queueId() {
+export function queueId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
@@ -92,13 +100,22 @@ export async function currentSchoolId(): Promise<string | undefined> {
 }
 
 /** Adds one operation to the outbox. `label` is what the user sees while it waits. */
-export async function enqueue(operation: QueuedOperation, label: string): Promise<QueuedEntry | null> {
+export async function enqueue(
+  operation: QueuedOperation,
+  label: string,
+  /**
+   * Given when the same write was first tried online under this id: if that
+   * attempt did reach the server after all, the replay is recognised instead
+   * of recorded twice.
+   */
+  id = queueId()
+): Promise<QueuedEntry | null> {
   const db = await getDb();
   if (!db) return null;
 
   const entry = {
     ...operation,
-    id: queueId(),
+    id,
     createdAt: Date.now(),
     label,
     attempts: 0,
@@ -111,8 +128,8 @@ export async function enqueue(operation: QueuedOperation, label: string): Promis
 }
 
 /** Backwards-compatible helper used by the payment modal. */
-export async function enqueuePayment(payload: PaymentPayload, label = "Paiement") {
-  return enqueue({ kind: "payment", payload }, label);
+export async function enqueuePayment(payload: PaymentPayload, label = "Paiement", id?: string) {
+  return enqueue({ kind: "payment", payload }, label, id);
 }
 
 export async function listQueued(): Promise<QueuedEntry[]> {
@@ -197,6 +214,7 @@ let flushing = false;
  * lost), so a retry never records the same payment twice.
  */
 export async function flushQueue(): Promise<FlushResult> {
+  if (isOffline()) return { synced: 0, failed: 0, pending: (await listPending()).length, errors: [] };
   if (flushing) return { synced: 0, failed: 0, pending: (await listPending()).length, errors: [] };
   flushing = true;
 
@@ -212,8 +230,11 @@ export async function flushQueue(): Promise<FlushResult> {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(entry),
+          signal: AbortSignal.timeout(SYNC_TIMEOUT_MS),
         });
+        reportReachable();
       } catch {
+        reportUnreachable();
         break; // still offline — keep everything for later
       }
 

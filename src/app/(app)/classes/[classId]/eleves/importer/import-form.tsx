@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { isOffline, withNetwork } from "@/lib/connectivity";
 import { importStudentsCsvAction, type ImportActionState } from "@/lib/actions/students";
 import { queueImport } from "@/lib/offline-import";
 import { isRedirectSignal } from "@/lib/offline-forms";
@@ -56,9 +57,10 @@ export function ImportForm({
       return res;
     };
 
-    if (typeof navigator !== "undefined" && !navigator.onLine) return importLocally();
+    if (isOffline()) return importLocally();
     try {
-      return await importStudentsCsvAction(classId, previous, formData);
+      // A long list takes the server a while; past this it is not answering.
+      return await withNetwork(() => importStudentsCsvAction(classId, previous, formData), 60000);
     } catch (err) {
       if (isRedirectSignal(err)) throw err;
       return importLocally(); // the network went away mid-import

@@ -4,7 +4,8 @@ import { useActionState, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { SchoolClass, Tranche } from "@prisma/client";
-import { saveClassConfigAction, deleteClassAction } from "@/lib/actions/classes";
+import { saveClassConfigAction, deleteClassAction, type ClassActionState } from "@/lib/actions/classes";
+import { isNetworkError, withNetwork } from "@/lib/connectivity";
 import { Field, Label, TextInput, Select, Textarea } from "@/components/form";
 import { DateInput } from "@/components/date-input";
 import { Button, Card } from "@/components/ui";
@@ -35,7 +36,19 @@ export function ConfigForm({
   studentCount: number;
 }) {
   const boundAction = saveClassConfigAction.bind(null, clazz.id);
-  const [state, formAction, pending] = useActionState(boundAction, undefined);
+  // The configuration is saved online only: without a network the form says
+  // so instead of throwing the whole page into the error screen.
+  const [state, formAction, pending] = useActionState(
+    async (previous: ClassActionState, formData: FormData): Promise<ClassActionState> => {
+      try {
+        return await withNetwork(() => boundAction(previous, formData), 20000);
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        return { error: "Pas de connexion : la configuration s'enregistre en ligne. Réessayez au retour du réseau." };
+      }
+    },
+    undefined
+  );
   const router = useRouter();
   const [deleting, startDelete] = useTransition();
 
@@ -46,7 +59,14 @@ export function ConfigForm({
     }
     if (!confirm(`Supprimer définitivement la classe « ${clazz.name} » ? Cette action est irréversible.`)) return;
     startDelete(async () => {
-      const res = await deleteClassAction(clazz.id);
+      let res: Awaited<ReturnType<typeof deleteClassAction>>;
+      try {
+        res = await withNetwork(() => deleteClassAction(clazz.id), 15000);
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        alert("Pas de connexion : la suppression d'une classe se fait en ligne. Réessayez au retour du réseau.");
+        return;
+      }
       if (res && "error" in res) alert(res.error);
       else router.push("/classes");
     });

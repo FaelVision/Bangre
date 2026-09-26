@@ -11,6 +11,7 @@ import { Button, Card } from "@/components/ui";
 import { runOrQueue, studentPayloadFrom, type StudentFormState } from "@/lib/offline-forms";
 import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 import { OfflineQueuedNotice } from "@/components/offline-queued-notice";
+import { isNetworkError, withNetwork } from "@/lib/connectivity";
 
 export function EditStudentForm({ student }: { student: Student }) {
   const boundAction = updateStudentAction.bind(null, student.id);
@@ -40,7 +41,14 @@ export function EditStudentForm({ student }: { student: Student }) {
   function handleDelete() {
     if (!confirm(`Supprimer définitivement l'élève ${student.lastName} ${student.firstName} ? Cette action est irréversible.`)) return;
     startDelete(async () => {
-      const res = await deleteStudentAction(student.id);
+      let res: Awaited<ReturnType<typeof deleteStudentAction>>;
+      try {
+        res = await withNetwork(() => deleteStudentAction(student.id), 15000);
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        alert("Pas de connexion : la suppression d'un élève se fait en ligne. Réessayez au retour du réseau.");
+        return;
+      }
       if (res && "error" in res) alert(res.error);
       else {
         // The copy on the device still holds the student: take it again.

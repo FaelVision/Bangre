@@ -1,6 +1,7 @@
 "use client";
 
 import { refreshSnapshot } from "@/lib/offline-mirror";
+import { isOffline } from "@/lib/connectivity";
 import { requestPersistentStorage } from "@/components/install-app";
 
 /**
@@ -130,7 +131,7 @@ export function prepareOfflineDevice(): Promise<OfflineReadiness> {
  * incomplete.
  */
 export function ensureOfflineReady() {
-  if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  if (isOffline()) return;
   let done = false;
   try {
     done = sessionStorage.getItem(SESSION_KEY) === "1";

@@ -5,6 +5,7 @@ import { previewForStudent } from "@/lib/reminder-message";
 import { findStudentWithPayments, isLocalId, studentsWithPayments } from "@/lib/offline-data";
 import { loadLocalData, scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 import { enqueue } from "@/lib/offline-queue";
+import { isOffline, withNetwork } from "@/lib/connectivity";
 
 /**
  * Rappels WhatsApp, online or not.
@@ -22,10 +23,6 @@ export type PreparedReminder = {
   phone: string;
   message: string;
 };
-
-function isOffline() {
-  return typeof navigator !== "undefined" && !navigator.onLine;
-}
 
 async function localPreviews(studentIds: string[]) {
   const data = await loadLocalData();
@@ -51,7 +48,7 @@ export async function prepareReminder(studentId: string): Promise<PreparedRemind
   // A student created on this device and not synced yet only exists here.
   if (!isOffline() && !isLocalId(studentId)) {
     try {
-      const res = await previewReminderAction(studentId);
+      const res = await withNetwork(() => previewReminderAction(studentId), 8000);
       if ("error" in res) return { error: res.error ?? "Rappel indisponible." };
       return res;
     } catch {
@@ -73,7 +70,7 @@ export async function prepareReminders(studentIds: string[]): Promise<{ prepared
 
   if (!isOffline() && !studentIds.some(isLocalId)) {
     try {
-      const res = await bulkPreviewRemindersAction(studentIds);
+      const res = await withNetwork(() => bulkPreviewRemindersAction(studentIds), 15000);
       return { prepared: res.prepared, skipped: res.skipped };
     } catch {
       /* offline after all — use the local copy */
@@ -91,7 +88,7 @@ export async function prepareReminders(studentIds: string[]): Promise<{ prepared
 export async function confirmReminderSent(item: PreparedReminder, message: string): Promise<{ queued: boolean }> {
   if (!isOffline() && !isLocalId(item.studentId)) {
     try {
-      await confirmReminderSentAction(item.studentId, item.trancheId, message);
+      await withNetwork(() => confirmReminderSentAction(item.studentId, item.trancheId, message), 8000);
       scheduleSnapshotRefresh();
       return { queued: false };
     } catch {

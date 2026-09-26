@@ -16,6 +16,7 @@ import { ImportForm } from "@/app/(app)/classes/[classId]/eleves/importer/import
 import { ClassConfigSummary } from "@/components/views/class-config-summary";
 import { useOnlineStatus } from "@/components/offline-status";
 import { useLocalData, refreshIfStale } from "@/lib/offline-mirror";
+import { assumeUnreachable } from "@/lib/connectivity";
 import type { MirrorData } from "@/lib/offline-data";
 import {
   classesOverview,
@@ -49,6 +50,15 @@ export function OfflineApp() {
   // empty frame on both sides is what keeps hydration honest.
   const [href, setHref] = useState<string | null>(null);
 
+  // This document is only served when a page could not be loaded from the
+  // server: treat the server as unreachable — every link stays local, every
+  // form goes to the outbox at once — until a probe proves it is back. Before,
+  // a wifi with no internet counted as "online" here, and each click waited
+  // on the server again.
+  useEffect(() => {
+    assumeUnreachable();
+  }, []);
+
   useEffect(() => {
     const current = () => `${window.location.pathname}${window.location.search}`;
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -77,7 +87,7 @@ export function OfflineApp() {
    * clicks are left alone, so the next page comes from the server.
    */
   const onClickCapture = useCallback(
-    (event: React.MouseEvent<HTMLDivElement>) => {
+    (event: React.MouseEvent<HTMLElement>) => {
       if (online) return;
       if (event.defaultPrevented || event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -104,21 +114,23 @@ export function OfflineApp() {
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const counts = sidebarCounts(data);
 
+  // The capture wraps the sidebar too: its links used to escape it, and each
+  // click there reloaded the whole offline app through the service worker.
   return (
     <PaymentModalProvider>
-      <AppShell
-        schoolName={data.school.name}
-        academicYearLabel={data.academicYear?.label ?? ""}
-        contactInitials={initialsOf(data.school.contactName)}
-        contactName={data.school.contactName}
-        counts={counts}
-        activePath={path}
-      >
-        <div onClickCapture={onClickCapture}>
+      <div className="contents" onClickCapture={onClickCapture}>
+        <AppShell
+          schoolName={data.school.name}
+          academicYearLabel={data.academicYear?.label ?? ""}
+          contactInitials={initialsOf(data.school.contactName)}
+          contactName={data.school.contactName}
+          counts={counts}
+          activePath={path}
+        >
           <ConnectivityBanner online={online} syncedAt={syncedAt} />
           <Screen data={data} path={path} params={url.searchParams} navigate={navigate} />
-        </div>
-      </AppShell>
+        </AppShell>
+      </div>
     </PaymentModalProvider>
   );
 }
