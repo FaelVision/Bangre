@@ -1,0 +1,19 @@
+[
+ {"id":"intro","text":"Bienvenue dans Bangre, la plateforme de gestion de la scolarité pour les écoles. Voyons ensemble comment l'utiliser au quotidien."},
+ {"id":"connexion","text":"Pour commencer, connectez-vous avec le numéro de téléphone ou l'adresse e-mail de l'école, puis votre mot de passe."},
+ {"id":"dashboard","text":"Le tableau de bord résume la situation de l'école : le total attendu, ce qui a été encaissé, ce qui reste à recouvrer, et le nombre d'élèves en retard."},
+ {"id":"dashboard2","text":"Plus bas, vous suivez la progression des encaissements, l'accès rapide aux classes, et les derniers paiements reçus."},
+ {"id":"classes","text":"Dans Classes, vous retrouvez toutes les classes de l'établissement, avec leurs effectifs et l'état des paiements."},
+ {"id":"config","text":"Chaque classe a sa configuration : le montant de la scolarité, les frais d'inscription, et les tranches avec leurs dates d'échéance. C'est ce qui permet à Bangre de repérer automatiquement les retards."},
+ {"id":"eleves","text":"La page Élèves liste tous les élèves. Vous pouvez chercher par nom, prénom ou matricule, et filtrer selon l'état des paiements."},
+ {"id":"ajout","text":"Pour inscrire un élève, cliquez sur Ajouter un élève. Choisissez sa classe, puis saisissez son nom, son prénom, sa date de naissance et le numéro du parent. Le matricule est proposé automatiquement."},
+ {"id":"fiche","text":"La fiche de l'élève montre le détail par tranche : ce qui est payé, ce qui reste à payer, et les retards éventuels."},
+ {"id":"paiement","text":"Pour encaisser, cliquez sur Enregistrer un paiement. Cochez les tranches réglées, ou saisissez un montant partiel, choisissez le mode de paiement, puis validez."},
+ {"id":"recu","text":"Le paiement est enregistré avec son numéro de reçu. Vous pouvez imprimer le reçu en PDF, et envoyer une confirmation au parent sur WhatsApp."},
+ {"id":"retards","text":"La page Retards de paiement liste les élèves en retard, avec le montant dû et le nombre de jours de retard. Vous pouvez filtrer par classe ou par ancienneté."},
+ {"id":"rappel","text":"Le bouton Rappel WhatsApp prépare un message personnalisé pour le parent. Relisez-le, modifiez-le si besoin, puis envoyez-le."},
+ {"id":"paiements","text":"Paiements et reçus rassemble le journal de tous les encaissements. Chaque reçu peut être retrouvé et réimprimé à tout moment."},
+ {"id":"horsligne","text":"Bangre fonctionne aussi sans internet. Quand la barre latérale affiche : Prêt à fonctionner hors ligne, vous pouvez continuer à travailler même si le réseau coupe."},
+ {"id":"horsligne2","text":"Hors ligne, un bandeau jaune vous le signale. Vos paiements et vos inscriptions sont gardés sur l'appareil, et partent automatiquement dès le retour du réseau."},
+ {"id":"outro","text":"Voilà l'essentiel pour bien démarrer avec Bangre. Merci de votre attention !"}
+]
