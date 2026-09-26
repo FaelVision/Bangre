@@ -84,6 +84,10 @@ Bangre est utilisable **entièrement sans réseau** : la connexion sert à synch
 
 Le service worker précharge le shell **et les fichiers dont il a besoin pour démarrer** (ses scripts, ses feuilles de style et les polices qu'elles référencent) : sans cela le document sortirait du cache sans pouvoir charger son propre JavaScript. Les pages visitées restent mises en cache (network-first) et servent de repli pour les écrans que le shell ne rend pas. Les redirections ne sont jamais mises en cache — sinon une session expirée ferait servir l'écran de connexion à la place du tableau de bord.
 
+**Installer l'application.** Bangre est une application web installable (`src/app/manifest.ts`, icônes `public/icon-192.png` / `icon-512.png`). Quand le navigateur le propose (Chrome, Edge), la barre latérale affiche « Installer l'application » : Bangre obtient alors sa propre icône sur l'ordinateur et s'ouvre dans sa fenêtre. Tout ce dont il a besoin reste sur le disque — le service worker et ses fichiers, la copie de l'école et la file de saisies dans IndexedDB — donc l'ordinateur peut être éteint puis rallumé sans réseau : Bangre s'ouvre et on continue à travailler. L'app demande au navigateur un stockage persistant (`navigator.storage.persist()`, accordé aux applications installées) pour que ces données ne soient pas effacées quand le disque se remplit. L'installation exige le HTTPS (le site en ligne) ou `localhost`.
+
+Une page qui ne répond pas au bout de 6 secondes est servie depuis l'appareil : un wifi connecté mais sans internet ne fait pas échouer les requêtes, il les laisse attendre une minute ou plus.
+
 **3. Une file de sortie pour les saisies.** Fonctionnent sans réseau et sont mises en file dans IndexedDB (`src/lib/offline-queue.ts`) :
 
 - enregistrer un paiement — avec le **détail réel des tranches** pour n'importe quel élève, reconstruit depuis la copie locale, pas seulement un montant libre ;

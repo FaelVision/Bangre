@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { OfflineStatusCard } from "@/components/offline-status";
+import { InstallAppButton } from "@/components/install-app";
 import { logoutAction } from "@/lib/actions/auth";
 import { clearMirror } from "@/lib/offline-mirror";
 
@@ -106,6 +107,7 @@ export function Sidebar({
 
       <div className="flex-1" />
 
+      <InstallAppButton />
       <OfflineStatusCard />
 
       <div className="flex items-center gap-2.5 px-2 py-2.5 mt-1.5">

@@ -1,5 +1,5 @@
 /* Bangre offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v5";
+const CACHE_VERSION = "v6";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 
@@ -57,7 +57,8 @@ async function precacheShell() {
     return; // no network at install time; the next activation tries again
   }
 
-  const urls = new Set();
+  // The installed app's own icons, so it looks right when opened offline.
+  const urls = new Set(["/icon-192.png", "/icon-512.png", "/icon.svg"]);
   for (const match of html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)) {
     urls.add(match[1].replace(/&amp;/g, "&"));
   }
@@ -130,16 +131,31 @@ self.addEventListener("message", (event) => {
  * it can draw from the device copy, and the last good HTML is the fallback for
  * the rest (class configuration, import, passage d'année…).
  */
+/**
+ * How long a page may take before the device copy takes over. A school wifi
+ * that is up with no internet behind it does not fail a request — it lets it
+ * hang for a minute or more. The request keeps running in the background, so a
+ * slow answer still refreshes the cache for next time.
+ */
+const NAVIGATION_TIMEOUT_MS = 6000;
+
 async function handleNavigation(request) {
   const cache = await caches.open(PAGES_CACHE);
   const url = new URL(request.url);
 
-  try {
-    const res = await fetch(request);
+  const network = fetch(request).then((res) => {
     // A redirect means "sign in again" — caching it under the requested URL
     // would serve the login page for the dashboard once offline.
     if (res.ok && !res.redirected) cache.put(request, res.clone());
     return res;
+  });
+  network.catch(() => {});
+
+  try {
+    return await Promise.race([
+      network,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), NAVIGATION_TIMEOUT_MS)),
+    ]);
   } catch {
     const shell = await cache.match(SHELL_URL);
     if (shell && isShellRoute(url.pathname)) return shell;
