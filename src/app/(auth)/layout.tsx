@@ -9,7 +9,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             <div className="flex items-center gap-3">
               <Image
                 src="/logo-bangre.jpg"
-                alt="Bangre"
+                alt="Bangré"
                 width={52}
                 height={52}
                 priority
@@ -17,7 +17,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
                 // narrows the box while the height stays 52px, squashing it.
                 className="rounded-full object-cover bg-white shrink-0"
               />
-              <div className="text-[21px] font-semibold tracking-tight">Bangre</div>
+              <div className="text-[21px] font-semibold tracking-tight">Bangré</div>
             </div>
             <div className="font-serif-display text-[44px] leading-[1.1] mt-16 max-w-[14em]">
               La scolarité de votre établissement, claire et à jour.

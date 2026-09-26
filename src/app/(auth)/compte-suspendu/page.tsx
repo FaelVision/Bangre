@@ -31,7 +31,7 @@ export default async function SuspendedAccountPage() {
 
       <div className="text-[13.5px] text-(--color-text-secondary) mt-5 leading-relaxed">
         Vos données — classes, élèves, paiements et reçus — sont intégralement conservées et seront de nouveau
-        accessibles dès la levée de la suspension. Contactez l&apos;administrateur de Bangre pour régulariser la
+        accessibles dès la levée de la suspension. Contactez l&apos;administrateur de Bangré pour régulariser la
         situation.
       </div>
 

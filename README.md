@@ -1,4 +1,4 @@
-# Bangre — gestion de la scolarité
+# Bangré — gestion de la scolarité
 
 Application SaaS pour la gestion de la scolarité des établissements scolaires au Burkina Faso : classes, élèves, tranches de paiement, reçus, rappels WhatsApp aux parents, et passage d'année.
 
@@ -32,7 +32,7 @@ Connexion de démonstration :
 Aucune des deux ne passe par une API métier — volontairement, pour ne dépendre d'aucun compte marchand ni d'API Business :
 
 - **WhatsApp** (`src/lib/whatsapp.ts`) : rappels et confirmations de paiement sont des liens `wa.me` pré-remplis, ouverts et envoyés manuellement par l'utilisateur depuis son propre WhatsApp.
-- **Mobile Money (abonnement)** : l'établissement envoie lui-même la cotisation (Orange Money / Moov Money) vers le numéro Bangre affiché sur `/abonnement` — le bouton « Composer » ouvre le clavier d'appel avec le code USSD pré-rempli. Le paiement est enregistré comme **en attente**, et un administrateur le confirme manuellement depuis `/admin` une fois la réception vérifiée sur le compte Mobile Money (`src/lib/subscription-core.ts` : `recordSubscriptionPayment` / `confirmSubscriptionPayment` / `rejectSubscriptionPayment`) — c'est seulement cette confirmation qui active ou prolonge l'abonnement.
+- **Mobile Money (abonnement)** : l'établissement envoie lui-même la cotisation (Orange Money / Moov Money) vers le numéro Bangré affiché sur `/abonnement` — le bouton « Composer » ouvre le clavier d'appel avec le code USSD pré-rempli. Le paiement est enregistré comme **en attente**, et un administrateur le confirme manuellement depuis `/admin` une fois la réception vérifiée sur le compte Mobile Money (`src/lib/subscription-core.ts` : `recordSubscriptionPayment` / `confirmSubscriptionPayment` / `rejectSubscriptionPayment`) — c'est seulement cette confirmation qui active ou prolonge l'abonnement.
 
 ### Messages de rappel
 
@@ -76,7 +76,7 @@ Le jeu de données est déterministe (`src/lib/demo-dataset.ts`) : deux réiniti
 
 ## Fonctionnement hors ligne
 
-Bangre est utilisable **entièrement sans réseau** : la connexion sert à synchroniser, pas à travailler. Trois pièces :
+Bangré est utilisable **entièrement sans réseau** : la connexion sert à synchroniser, pas à travailler. Trois pièces :
 
 **1. Une copie de l'école sur l'appareil.** `GET /api/offline/snapshot` renvoie tout l'établissement (école, année, classes et tranches, élèves, paiements et affectations, rappels) ; le navigateur la range dans IndexedDB (`src/lib/offline-mirror.ts`). Elle est re-téléchargée après chaque écriture acceptée par le serveur, à chaque reconnexion, au démarrage de l'app et au retour au premier plan si elle a plus de 5 minutes, et sinon toutes les 15 minutes tant que l'onglet est visible — une école entière représente un vrai téléchargement sur une connexion mobile. La barre latérale indique son âge (« Copie locale des données : il y a 3 min ») et permet de la rafraîchir à la main.
 
@@ -88,7 +88,7 @@ Le service worker précharge le shell **et les fichiers dont il a besoin pour d�
 
 Hors ligne, **toute** page de l'app est servie par l'application hors ligne, jamais une ancienne copie d'une page serveur (données périmées, scripts disparus) ; les requêtes de navigation interne (RSC) coupées au bout de 6 s basculent sur elle.
 
-**Installer l'application.** Bangre est une application web installable (`src/app/manifest.ts`, icônes `public/icon-192.png` / `icon-512.png`). Quand le navigateur le propose (Chrome, Edge), la barre latérale affiche « Installer l'application » : Bangre obtient alors sa propre icône sur l'ordinateur et s'ouvre dans sa fenêtre. Tout ce dont il a besoin reste sur le disque — le service worker et ses fichiers, la copie de l'école et la file de saisies dans IndexedDB — donc l'ordinateur peut être éteint puis rallumé sans réseau : Bangre s'ouvre et on continue à travailler. L'app demande au navigateur un stockage persistant (`navigator.storage.persist()`, accordé aux applications installées) pour que ces données ne soient pas effacées quand le disque se remplit. L'installation exige le HTTPS (le site en ligne) ou `localhost`.
+**Installer l'application.** Bangré est une application web installable (`src/app/manifest.ts`, icônes `public/icon-192.png` / `icon-512.png`). Quand le navigateur le propose (Chrome, Edge), la barre latérale affiche « Installer l'application » : Bangré obtient alors sa propre icône sur l'ordinateur et s'ouvre dans sa fenêtre. Tout ce dont il a besoin reste sur le disque — le service worker et ses fichiers, la copie de l'école et la file de saisies dans IndexedDB — donc l'ordinateur peut être éteint puis rallumé sans réseau : Bangré s'ouvre et on continue à travailler. L'app demande au navigateur un stockage persistant (`navigator.storage.persist()`, accordé aux applications installées) pour que ces données ne soient pas effacées quand le disque se remplit. L'installation exige le HTTPS (le site en ligne) ou `localhost`.
 
 Une page qui ne répond pas au bout de 6 secondes est servie depuis l'appareil : un wifi connecté mais sans internet ne fait pas échouer les requêtes, il les laisse attendre une minute ou plus.
 

@@ -203,8 +203,8 @@ export async function forgotPasswordAction(
   const result = school.email
     ? await sendEmail(
         school.email,
-        "Réinitialisation de votre mot de passe Bangre",
-        `Bonjour ${school.contactName}, voici votre lien de réinitialisation du mot de passe Bangre (valable 1h) : ${resetUrl}`
+        "Réinitialisation de votre mot de passe Bangré",
+        `Bonjour ${school.contactName}, voici votre lien de réinitialisation du mot de passe Bangré (valable 1h) : ${resetUrl}`
       )
     : { ok: false, mode: "mock" as const };
 

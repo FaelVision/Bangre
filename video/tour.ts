@@ -1,5 +1,5 @@
 /*
- * Vidéo de présentation de Bangre, filmée sur le compte de démonstration local.
+ * Vidéo de présentation de Bangré, filmée sur le compte de démonstration local.
  *
  * 1. npm run build && npm run demo:reset
  * 2. FFMPEG=<ffmpeg.exe> python video/voix.py                    (voix off naturelle → video/out/audio ;
@@ -8,7 +8,7 @@
  * 4. npm run demo:reset                                           (le tournage inscrit un élève et encaisse ;
  *    l'école « Collège Wend-Panga » créée à l'écran est supprimée d'elle-même)
  *
- * Résultat : video/out/Bangre-presentation.mp4. Le texte dit par la voix off
+ * Résultat : video/out/Bangré-presentation.mp4. Le texte dit par la voix off
  * et affiché en sous-titres est dans video/narration.json. Playwright a
  * besoin de son module vidéo (`npx playwright install ffmpeg`) ; si le
  * téléchargement est bloqué, copier un ffmpeg.exe à l'emplacement qu'il
@@ -217,7 +217,7 @@ async function main() {
   await page.reload({ waitUntil: "networkidle" });
 
   await scene("intro", async () => {
-    await card("Bangre", "La scolarité de votre école, simplement");
+    await card("Bangré", "La scolarité de votre école, simplement");
   });
 
   await scene("inscription", async () => {
@@ -423,7 +423,7 @@ async function main() {
 
   await scene("outro", async () => {
     await caption("");
-    await card("Bangre", "Merci de votre attention !");
+    await card("Bangré", "Merci de votre attention !");
     await caption(narration.find((n) => n.id === "outro")!.text);
   });
 
@@ -451,7 +451,7 @@ function mux(video: string, marks: { id: string; at: number }[]) {
     ";" +
     marks.map((_, i) => `[a${i}]`).join("") +
     `amix=inputs=${marks.length}:normalize=0,volume=1.6,alimiter=limit=0.7:level=false[aout]`;
-  const out = path.join(OUT, "Bangre-presentation.mp4");
+  const out = path.join(OUT, "Bangré-presentation.mp4");
   execFileSync(
     ffmpeg,
     ["-nostdin", "-loglevel", "error", "-y", "-i", video, ...inputs, "-filter_complex", filter,

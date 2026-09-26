@@ -70,7 +70,7 @@ export function AppShell({
         </button>
         <Image src="/logo-bangre.jpg" alt="" width={30} height={30} className="rounded-full object-cover shrink-0" />
         <div className="min-w-0">
-          <div className="text-[14.5px] font-semibold tracking-tight leading-tight">Bangre</div>
+          <div className="text-[14.5px] font-semibold tracking-tight leading-tight">Bangré</div>
           <div className="text-[11px] text-(--color-text-muted) truncate">
             {schoolName} · {academicYearLabel}
           </div>

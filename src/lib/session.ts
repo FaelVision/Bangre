@@ -7,7 +7,7 @@ const secretKey = process.env.SESSION_SECRET || "insecure-dev-secret-change-me";
 const encodedKey = new TextEncoder().encode(secretKey);
 
 /**
- * Bangre runs over plain HTTP on the school's local network (http://192.168.x.x),
+ * Bangré runs over plain HTTP on the school's local network (http://192.168.x.x),
  * where a `Secure` cookie is never sent back and the app locks everyone out. So
  * `Secure` is opt-in via COOKIE_SECURE=true — set it only behind HTTPS.
  */

@@ -1,5 +1,5 @@
 /*
- * Probe: how does Bangre behave on the kinds of bad network a school really has?
+ * Probe: how does Bangré behave on the kinds of bad network a school really has?
  * A TCP proxy sits between the browser and the server, and can
  *   - pass    : normal
  *   - refuse  : close every connection at once (network down, onLine still true)

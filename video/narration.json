@@ -1,7 +1,7 @@
 [
  {
   "id": "intro",
-  "text": "Bienvenue dans Bangre, la plateforme de gestion de la scolarité pour les écoles. Voyons ensemble comment l'utiliser au quotidien."
+  "text": "Bienvenue dans Bangré, la plateforme de gestion de la scolarité pour les écoles. Voyons ensemble comment l'utiliser au quotidien."
  },
  {
   "id": "inscription",
@@ -33,7 +33,7 @@
  },
  {
   "id": "config",
-  "text": "Chaque classe a sa configuration : le montant de la scolarité, les frais d'inscription, et les tranches avec leurs dates d'échéance. C'est ce qui permet à Bangre de repérer automatiquement les retards."
+  "text": "Chaque classe a sa configuration : le montant de la scolarité, les frais d'inscription, et les tranches avec leurs dates d'échéance. C'est ce qui permet à Bangré de repérer automatiquement les retards."
  },
  {
   "id": "eleves",
@@ -69,7 +69,7 @@
  },
  {
   "id": "horsligne",
-  "text": "Bangre fonctionne aussi sans internet. Quand la barre latérale affiche : Prêt à fonctionner hors ligne, vous pouvez continuer à travailler même si le réseau coupe."
+  "text": "Bangré fonctionne aussi sans internet. Quand la barre latérale affiche : Prêt à fonctionner hors ligne, vous pouvez continuer à travailler même si le réseau coupe."
  },
  {
   "id": "horsligne2",
@@ -77,6 +77,6 @@
  },
  {
   "id": "outro",
-  "text": "Voilà l'essentiel pour bien démarrer avec Bangre. Merci de votre attention !"
+  "text": "Voilà l'essentiel pour bien démarrer avec Bangré. Merci de votre attention !"
  }
 ]

@@ -33,7 +33,7 @@ export async function sendEmail(to: string, subject: string, text: string): Prom
         Accept: "application/json",
       },
       body: JSON.stringify({
-        sender: { email: process.env.BREVO_FROM_EMAIL, name: "Bangre" },
+        sender: { email: process.env.BREVO_FROM_EMAIL, name: "Bangré" },
         to: [{ email: to }],
         subject,
         textContent: text,

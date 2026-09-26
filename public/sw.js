@@ -1,5 +1,5 @@
-/* Bangre offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v9";
+/* Bangré offline shell. Bump CACHE_VERSION to invalidate everything. */
+const CACHE_VERSION = "v10";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 
@@ -226,9 +226,9 @@ async function offlineShell(url) {
 
   return new Response(
     "<!doctype html><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">" +
-      "<title>Bangre — hors ligne</title>" +
+      "<title>Bangré — hors ligne</title>" +
       "<body style=\"font-family:system-ui;padding:40px;color:#333\"><h2>Pas de connexion</h2>" +
-      "<p>Cette page a besoin d'internet. Si Bangre a déjà été ouvert sur cet appareil, " +
+      "<p>Cette page a besoin d'internet. Si Bangré a déjà été ouvert sur cet appareil, " +
       "<a href=\"/tableau-de-bord\">ouvrez le tableau de bord</a> : il fonctionne hors ligne.</p>",
     { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
   );

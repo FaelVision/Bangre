@@ -62,7 +62,7 @@ export function SubscriptionExpiryAlert({
             : `${subject} se termine dans ${daysLeft} jour${daysLeft > 1 ? "s" : ""}`}
         </div>
         <div className="text-[13.5px] text-(--color-text-muted) mt-2 leading-relaxed">
-          {isTrial ? "Fin d'essai" : "Renouvellement"} le {untilLabel}. Passé cette date, l&apos;accès à Bangre sera
+          {isTrial ? "Fin d'essai" : "Renouvellement"} le {untilLabel}. Passé cette date, l&apos;accès à Bangré sera
           bloqué jusqu&apos;au paiement.
         </div>
         <div className="flex gap-2.5 mt-4.5">

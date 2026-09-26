@@ -72,7 +72,7 @@ model PasswordResetToken {
 }
 
 // ---------------------------------------------------------------------------
-// Platform side: the operator of Bangre, not a school.
+// Platform side: the operator of Bangré, not a school.
 // ---------------------------------------------------------------------------
 model Admin {
   id           String   @id @default(cuid())

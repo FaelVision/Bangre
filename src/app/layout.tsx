@@ -20,8 +20,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Bangre — Gestion de la scolarité",
-  description: "Bangre : classes, tranches de paiement, reçus et rappels WhatsApp pour les établissements scolaires.",
+  title: "Bangré — Gestion de la scolarité",
+  description: "Bangré : classes, tranches de paiement, reçus et rappels WhatsApp pour les établissements scolaires.",
 };
 
 export const viewport: Viewport = {

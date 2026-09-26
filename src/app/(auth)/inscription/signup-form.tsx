@@ -109,7 +109,7 @@ export function SignupForm({
         )}
 
         <div className="mt-4.5">
-          <Checkbox name="terms" required label="J'accepte les conditions d'utilisation de Bangre." />
+          <Checkbox name="terms" required label="J'accepte les conditions d'utilisation de Bangré." />
         </div>
 
         {state?.error && <div className="text-[13px] text-(--color-danger-text) mt-3">{state.error}</div>}

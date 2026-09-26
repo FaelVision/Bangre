@@ -31,7 +31,7 @@ export async function requestPersistentStorage() {
 }
 
 /**
- * "Installer Bangre sur cet ordinateur". Once installed, Bangre opens from its
+ * "Installer Bangré sur cet ordinateur". Once installed, Bangré opens from its
  * own icon like any program — after a restart, with no network — straight into
  * the data kept on the device. Only shown when the browser offers installation
  * and the app is not already running installed.
@@ -75,9 +75,9 @@ export function InstallAppButton() {
 
   return (
     <div className="border border-(--color-success-border) bg-(--color-success-bg-soft) rounded-xl p-3 mb-2">
-      <div className="text-[13px] font-semibold text-(--color-success-text-dark)">Installer Bangre</div>
+      <div className="text-[13px] font-semibold text-(--color-success-text-dark)">Installer Bangré</div>
       <div className="text-xs text-(--color-text-muted) mt-1 leading-snug">
-        Une icône sur cet ordinateur : Bangre s&apos;ouvre et fonctionne même sans connexion, y compris après un
+        Une icône sur cet ordinateur : Bangré s&apos;ouvre et fonctionne même sans connexion, y compris après un
         redémarrage.
       </div>
       <button

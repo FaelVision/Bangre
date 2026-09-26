@@ -39,7 +39,7 @@ import type { StudentSummary } from "@/lib/tuition";
  * The service worker serves this document for any app page requested without a
  * network, whatever its URL — including pages this device has never opened. So
  * this component reads the address itself, renders the matching screen from
- * IndexedDB, and turns every link into a local navigation: offline, Bangre
+ * IndexedDB, and turns every link into a local navigation: offline, Bangré
  * behaves like an app that happens to have its data already.
  */
 export function OfflineApp() {
@@ -394,9 +394,9 @@ function NoLocalCopy({ online }: { online: boolean }) {
   return (
     <Panel title="Aucune donnée sur cet appareil">
       <p className="text-[13.5px] text-(--color-text-secondary) leading-relaxed mt-2.5">
-        Bangre copie les classes, les élèves et les paiements sur l&apos;appareil à chaque connexion, pour pouvoir
+        Bangré copie les classes, les élèves et les paiements sur l&apos;appareil à chaque connexion, pour pouvoir
         tout afficher sans réseau. Cette copie n&apos;a pas encore été faite ici : connectez-vous une fois au réseau,
-        ouvrez Bangre, et tout restera ensuite disponible hors ligne.
+        ouvrez Bangré, et tout restera ensuite disponible hors ligne.
       </p>
       <div className="rounded-[11px] border border-(--color-success-border) bg-(--color-success-bg-soft) px-4 py-3 mt-4">
         <div className="text-[13px] font-semibold text-(--color-success-text-dark)">Vos saisies ne sont pas perdues</div>

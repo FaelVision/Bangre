@@ -42,7 +42,7 @@ export default function AppError({ error, retry }: { error: Error & { digest?: s
         </div>
         <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-1.5">
           {network
-            ? "Le reste de Bangre fonctionne avec les données de cet appareil. Vos saisies sont gardées et partiront au retour du réseau."
+            ? "Le reste de Bangré fonctionne avec les données de cet appareil. Vos saisies sont gardées et partiront au retour du réseau."
             : "L'incident a été signalé automatiquement. Vos données ne sont pas affectées."}
         </p>
         <div className="flex gap-2.5 mt-4">

@@ -299,7 +299,7 @@ function ReminderMessages({ stored }: { stored: string | null }) {
       <div className="text-[15px] font-semibold">3 · Messages de rappel</div>
       <div className="text-[13px] text-(--color-text-muted) mt-1.5 leading-relaxed">
         Utilisés pour pré-remplir le message WhatsApp quand vous cliquez sur « Envoyer un rappel » — vous
-        l&apos;envoyez vous-même, rien n&apos;est expédié automatiquement. Bangre choisit le message selon la
+        l&apos;envoyez vous-même, rien n&apos;est expédié automatiquement. Bangré choisit le message selon la
         situation de l&apos;élève.
       </div>
       <div className="grid gap-5 mt-4.5">

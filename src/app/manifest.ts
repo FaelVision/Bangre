@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 /**
  * Served at /manifest.webmanifest (already whitelisted in `src/proxy.ts` and
- * `public/sw.js`). Makes Bangre installable — on the school's computer as on a
+ * `public/sw.js`). Makes Bangré installable — on the school's computer as on a
  * phone — as a standalone app that opens from its own icon, with or without a
  * network: the service worker serves the offline application and the school's
  * data is on the device.
@@ -12,8 +12,8 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Bangre — Gestion de la scolarité",
-    short_name: "Bangre",
+    name: "Bangré — Gestion de la scolarité",
+    short_name: "Bangré",
     description:
       "Classes, tranches de paiement, reçus et rappels WhatsApp pour les établissements scolaires.",
     id: "/",

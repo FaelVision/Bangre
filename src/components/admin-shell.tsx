@@ -27,7 +27,7 @@ export function AdminShell({
             <span className="w-7 h-7 rounded-lg bg-(--color-primary) text-white flex items-center justify-center text-[13px] font-bold shrink-0">
               B
             </span>
-            <div className="text-[14.5px] font-semibold tracking-tight">Bangre · Administration</div>
+            <div className="text-[14.5px] font-semibold tracking-tight">Bangré · Administration</div>
             <div className="flex-1" />
             <span className="text-[12.5px] text-[#F7EFE4]/55 hidden sm:inline truncate max-w-[160px]">{adminName}</span>
             <form action={adminLogoutAction}>

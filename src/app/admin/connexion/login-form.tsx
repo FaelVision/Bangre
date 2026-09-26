@@ -15,7 +15,7 @@ export function AdminLoginForm({ hasAdmin }: { hasAdmin: boolean }) {
           <span className="w-8 h-8 rounded-lg bg-(--color-primary) text-white flex items-center justify-center text-sm font-bold">
             B
           </span>
-          <div className="text-[17px] font-semibold tracking-tight">Bangre · Administration</div>
+          <div className="text-[17px] font-semibold tracking-tight">Bangré · Administration</div>
         </div>
 
         <div className="text-[25px] font-semibold tracking-tight mt-8">Espace administrateur</div>
