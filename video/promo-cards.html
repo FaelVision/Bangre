@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root { --cream:#F4EFE6; --ink:#1E1A15; --muted:#6B6358; --green:#0F7A3D; --gold:#B8913A; --red:#B3262E; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { width:1920px; height:1080px; overflow:hidden; background:var(--cream); color:var(--ink);
+    font-family:"Instrument Sans", system-ui, sans-serif; }
+  .scene { position:absolute; inset:0; display:none; }
+  .scene.on { display:block; }
+  .serif { font-family:"Instrument Serif", Georgia, serif; font-weight:400; }
+  .grain { position:absolute; inset:0; background:
+      radial-gradient(1200px 700px at 80% -10%, rgba(15,122,61,.10), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(184,145,58,.14), transparent 60%); }
+  .flag { position:absolute; left:0; right:0; bottom:0; height:10px;
+    background:linear-gradient(90deg, var(--red) 0 50%, var(--green) 50% 100%); }
+
+  @keyframes up { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:none; } }
+  @keyframes pop { 0% { opacity:0; transform:scale(.6); } 70% { opacity:1; transform:scale(1.04); } 100% { opacity:1; transform:scale(1); } }
+  @keyframes fadeout { to { opacity:0; transform:translateY(-30px); } }
+  @keyframes strike { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+  @keyframes drift { from { transform:scale(1); } to { transform:scale(1.06); } }
+  @keyframes grow { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+
+  /* --- hook ------------------------------------------------------------ */
+  #hook .lines { position:absolute; left:220px; top:250px; }
+  #hook .line { font-size:92px; line-height:1.3; font-weight:600; letter-spacing:-.02em; position:relative; width:max-content;
+    opacity:0; animation:up .55s cubic-bezier(.2,.8,.2,1) forwards, fadeout .5s ease-in 4.8s forwards; }
+  #hook .line::after { content:""; position:absolute; left:-8px; right:-8px; top:54%; height:7px; background:var(--red);
+    transform-origin:left; transform:scaleX(0); animation:strike .35s ease-out forwards; }
+  #hook .l1 { animation-delay:.25s, 4.8s; } #hook .l1::after { animation-delay:1.4s; }
+  #hook .l2 { animation-delay:1.7s, 4.85s; } #hook .l2::after { animation-delay:2.9s; }
+  #hook .l3 { animation-delay:3.2s, 4.9s; color:var(--muted); } #hook .l3::after { animation-delay:4.5s; }
+  #hook .big { position:absolute; left:220px; right:220px; top:330px; }
+  #hook .big .a { font-size:64px; font-weight:500; color:var(--muted); opacity:0; animation:up .6s ease-out 5.0s forwards; }
+  #hook .big .b { font-size:150px; line-height:1.05; margin-top:18px; opacity:0; animation:up .7s cubic-bezier(.2,.8,.2,1) 6.9s forwards; }
+  #hook .big .b em { color:var(--red); }
+
+  /* --- brand ----------------------------------------------------------- */
+  #brand .logo, #end .logo { position:absolute; left:50%; width:760px; margin-left:-380px; border-radius:28px;
+    mix-blend-mode:multiply; -webkit-mask-image:radial-gradient(ellipse 48% 50% at 50% 50%, #000 62%, transparent 100%);
+    mask-image:radial-gradient(ellipse 48% 50% at 50% 50%, #000 62%, transparent 100%); }
+  #brand .logo { top:120px; opacity:0; animation:pop .9s cubic-bezier(.2,.8,.2,1) .15s forwards; }
+  #brand .tag { position:absolute; left:0; right:0; top:560px; text-align:center; font-size:84px; line-height:1.1;
+    opacity:0; animation:up .7s ease-out 1.3s forwards; }
+  #brand .tag em { color:var(--green); }
+  #brand .tag small { display:block; font-family:"Instrument Sans"; font-size:40px; color:var(--muted); margin-top:26px;
+    opacity:0; animation:up .6s ease-out 2.6s forwards; }
+
+  /* --- feature frame (static, the screen recording goes in the hole) ----- */
+  #frame .head { position:absolute; left:192px; right:320px; top:36px; display:flex; gap:26px; align-items:flex-start; }
+  #frame .num { flex:none; margin-top:14px; width:64px; height:64px; border-radius:50%; background:var(--green);
+    color:#fff; font-size:32px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  #frame .title { font-size:66px; line-height:1.05; }
+  #frame .sub { margin-top:8px; font-size:30px; color:var(--muted); font-weight:500; }
+  #frame .card { position:absolute; left:180px; top:164px; width:1560px; height:888px; border-radius:20px; background:#fff;
+    box-shadow:0 30px 80px rgba(60,40,10,.18), 0 0 0 1px rgba(60,40,10,.08); }
+  #frame .brandmark { position:absolute; right:192px; top:46px; height:96px; mix-blend-mode:multiply;
+    mask-image:radial-gradient(ellipse 30% 50% at 50% 50%, #000 70%, transparent 100%); }
+
+  /* --- benefits -------------------------------------------------------- */
+  #benefits .col { position:absolute; left:0; right:0; top:230px; text-align:center; }
+  #benefits .row { font-size:120px; line-height:1.25; opacity:0; animation:up .55s cubic-bezier(.2,.8,.2,1) forwards; }
+  #benefits .row b { font-family:"Instrument Sans"; font-weight:700; font-size:.62em; letter-spacing:.06em; text-transform:uppercase;
+    vertical-align:.28em; margin-right:.35em; }
+  #benefits .r1 { animation-delay:.25s; } #benefits .r1 b { color:var(--red); }
+  #benefits .r2 { animation-delay:1.3s; } #benefits .r2 b { color:var(--red); }
+  #benefits .r3 { animation-delay:2.6s; color:var(--green); } #benefits .r3 b { color:var(--green); }
+
+  /* --- end ------------------------------------------------------------- */
+  #end .logo { top:70px; width:700px; margin-left:-350px; opacity:0; animation:pop .9s cubic-bezier(.2,.8,.2,1) .1s forwards; }
+  #end .cta { position:absolute; left:0; right:0; top:560px; text-align:center; }
+  #end .cta .a { font-size:96px; opacity:0; animation:up .6s ease-out 1.2s forwards; }
+  #end .cta .a em { color:var(--green); }
+  #end .pill { display:inline-block; margin-top:36px; padding:22px 48px; border-radius:999px; background:var(--green); color:#fff;
+    font-size:46px; font-weight:600; letter-spacing:.01em; opacity:0; animation:pop .6s ease-out 2.0s forwards; }
+  #end .fine { margin-top:30px; font-size:32px; color:var(--muted); opacity:0; animation:up .6s ease-out 2.5s forwards; }
+  .zoom { position:absolute; inset:0; animation:drift 12s linear forwards; }
+
+  /* --- phone format (1080×1920) ------------------------------------------ */
+  html.v, html.v body { width:1080px; height:1920px; }
+  /* Line breaks that only the narrow phone format needs. */
+  br.vonly { display:none; }
+  .v br.vonly { display:inline; }
+  .v .flag { height:14px; }
+  .v #hook .lines { left:70px; top:560px; }
+  .v #hook .line { font-size:62px; }
+  .v #hook .big { left:80px; right:80px; top:640px; }
+  .v #hook .big .a { font-size:50px; }
+  .v #hook .big .b { font-size:124px; }
+  .v #brand .logo { top:360px; width:1000px; margin-left:-500px; }
+  .v #brand .tag { left:40px; right:40px; top:960px; font-size:62px; }
+  .v #brand .tag small { font-size:38px; margin-top:34px; }
+  .v #frame .head { left:100px; right:100px; top:96px; gap:22px; }
+  .v #frame .num { margin-top:8px; width:58px; height:58px; font-size:29px; }
+  .v #frame .title { font-size:62px; }
+  .v #frame .sub { font-size:31px; margin-top:12px; }
+  .v #frame .brandmark { display:none; }
+  .v #frame .card { left:100px; top:370px; width:880px; height:1470px; border-radius:28px; }
+  .v #benefits .col { left:60px; right:60px; top:560px; }
+  .v #benefits .row { font-size:112px; line-height:1.2; margin-bottom:40px; }
+  .v #end .logo { top:300px; width:940px; margin-left:-470px; }
+  .v #end .cta { left:70px; right:70px; top:880px; }
+  .v #end .cta .a { font-size:100px; line-height:1.08; }
+  .v #end .pill { margin-top:56px; font-size:46px; }
+  .v #end .fine { margin-top:40px; font-size:34px; line-height:1.4; padding:0 40px; }
+</style>
+</head>
+<body>
+  <section class="scene" id="hook">
+    <div class="grain"></div>
+    <div class="lines">
+      <div class="line l1">Cahiers de scolarité…</div>
+      <div class="line l2">Reçus écrits à la main…</div>
+      <div class="line l3">Parents à relancer un par un…</div>
+    </div>
+    <div class="big">
+      <div class="a">Gérer la scolarité d'une école, ce sont</div>
+      <div class="b serif">des heures <em>perdues</em><br>chaque semaine.</div>
+    </div>
+    <div class="flag"></div>
+  </section>
+
+  <section class="scene" id="brand">
+    <div class="grain"></div>
+    <div class="zoom">
+      <img class="logo" src="../public/logo-bangre.jpg" alt="">
+      <div class="tag serif">Toute la scolarité de votre école, <br><em>dans une seule application.</em>
+        <small>Pensé pour les écoles du Burkina Faso</small></div>
+    </div>
+    <div class="flag"></div>
+  </section>
+
+  <section class="scene" id="frame">
+    <div class="grain"></div>
+    <div class="head">
+      <div class="num"></div>
+      <div><div class="title serif"></div><div class="sub"></div></div>
+    </div>
+    <img class="brandmark" src="../public/logo-bangre.jpg" alt="">
+    <div class="card"></div>
+    <div class="flag"></div>
+  </section>
+
+  <section class="scene" id="benefits">
+    <div class="grain"></div>
+    <div class="col serif">
+      <div class="row r1"><b>Moins</b>d'impayés.</div>
+      <div class="row r2"><b>Moins</b>de paperasse.</div>
+      <div class="row r3"><b>Plus</b>de temps<br class="vonly"> pour vos élèves.</div>
+    </div>
+    <div class="flag"></div>
+  </section>
+
+  <section class="scene" id="end">
+    <div class="grain"></div>
+    <img class="logo" src="../public/logo-bangre.jpg" alt="">
+    <div class="cta">
+      <div class="a serif">Passez à <em>Bangré</em><br class="vonly"> dès aujourd'hui</div>
+      <div class="pill">À partir de 5 000 CFA / mois</div>
+      <div class="fine">Paiement par Orange Money ou Moov Money · bangre.vercel.app</div>
+    </div>
+    <div class="flag"></div>
+  </section>
+
+<script>
+  const q = new URLSearchParams(location.search);
+  if (q.get("v")) document.documentElement.classList.add("v");
+  document.getElementById(q.get("scene") || "hook").classList.add("on");
+  if (q.get("scene") === "frame") {
+    document.querySelector("#frame .num").textContent = q.get("num") || "";
+    document.querySelector("#frame .title").textContent = q.get("title") || "";
+    document.querySelector("#frame .sub").textContent = q.get("sub") || "";
+  }
+</script>
+</body>
+</html>

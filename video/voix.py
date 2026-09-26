@@ -1,7 +1,8 @@
 """
 Voix off naturelle de la vidéo de présentation : un fichier WAV par scène de
 narration.json, lu par une voix neuronale de Microsoft (celle de la lecture à
-voix haute d'Edge). Seul ce texte est envoyé au service de synthèse.
+voix haute d'Edge), Denise : plus régulière que les voix multilingues, qui
+écorchaient « Bangré ». Seul ce texte est envoyé au service de synthèse.
 
     pip install edge-tts
     FFMPEG=<chemin de ffmpeg.exe> python video/voix.py [dossier de sortie]
@@ -19,7 +20,7 @@ from pathlib import Path
 
 import edge_tts
 
-VOICE = "fr-FR-VivienneMultilingualNeural"
+VOICE = "fr-FR-DeniseNeural"
 HERE = Path(__file__).parent
 
 

@@ -35,6 +35,16 @@ const SIGNUP = {
 };
 const prisma = new PrismaClient();
 const removeSignupSchool = () => prisma.school.deleteMany({ where: { email: SIGNUP.email } });
+/** Stands in for the admin confirming the Mobile Money payment (confirmSubscriptionPayment). */
+async function confirmSignupPayment() {
+  const school = await prisma.school.findUniqueOrThrow({ where: { email: SIGNUP.email } });
+  const renewsAt = new Date();
+  renewsAt.setDate(renewsAt.getDate() + 365);
+  await prisma.$transaction([
+    prisma.subscriptionPayment.updateMany({ where: { schoolId: school.id, status: "pending" }, data: { status: "success" } }),
+    prisma.school.update({ where: { id: school.id }, data: { subscriptionStatus: "active", subscriptionRenewsAt: renewsAt } }),
+  ]);
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -184,7 +194,7 @@ async function main() {
       requestAnimationFrame(step);
     })`);
   }
-  /** The trial-expiry reminder pops over everything: out of the way before filming. */
+  /** The renewal reminder pops over everything: out of the way before filming. */
   async function dismissAlerts() {
     const later = page.getByRole("button", { name: "Plus tard" });
     if (await later.isVisible().catch(() => false)) await later.click();
@@ -237,15 +247,23 @@ async function main() {
 
   await scene("abonnement", async () => {
     await sleep(800);
-    await point(page.getByText(/Essai — \d+ jours? restants/).first());
-    await sleep(1800);
-    await point(page.getByText("CFA / mois").first());
+    await point(page.getByText("Abonnement requis").first());
     await sleep(1500);
-    await smoothScroll(350, 1800);
+    await point(page.getByText("CFA / mois").first());
+    await sleep(1200);
+    await smoothScroll(300, 1600);
     const orange = page.getByText("Orange Money").first();
     if (await orange.isVisible().catch(() => false)) await point(orange);
-    await sleep(1200);
-    await click(page.getByRole("button", { name: /Continuer l'essai sans payer/ }));
+    await sleep(800);
+    await type(page.locator('input[name="phone"]'), "70 12 34 56");
+    await click(page.getByRole("button", { name: /J'ai envoyé/ }));
+    await page.getByText("Paiement en attente de confirmation").first().waitFor({ timeout: 20000 });
+    await sleep(1500);
+    // What the platform does once the money has arrived on its Mobile Money account.
+    await confirmSignupPayment();
+    await page.reload({ waitUntil: "networkidle" });
+    await sleep(800);
+    await click(page.getByRole("link", { name: "Aller au tableau de bord" }));
     await page.waitForURL("**/tableau-de-bord", { timeout: 20000 });
   });
 
@@ -438,6 +456,11 @@ async function main() {
   if (file) mux(file, marks);
 }
 
+/** libx264 by default; VCODEC=h264_nvenc (or h264_qsv) for an ffmpeg built without it. */
+const VIDEO_CODEC = process.env.VCODEC
+  ? ["-c:v", process.env.VCODEC, "-rc", "vbr", "-cq", "28", "-b:v", "0", "-maxrate", "1500k", "-bufsize", "3M"]
+  : ["-c:v", "libx264", "-preset", "medium", "-crf", "22"];
+
 /** Lays each voice-over clip at the start of its scene and encodes an MP4. */
 function mux(video: string, marks: { id: string; at: number }[]) {
   const ffmpeg = process.env.FFMPEG;
@@ -455,7 +478,7 @@ function mux(video: string, marks: { id: string; at: number }[]) {
   execFileSync(
     ffmpeg,
     ["-nostdin", "-loglevel", "error", "-y", "-i", video, ...inputs, "-filter_complex", filter,
-      "-map", "0:v", "-map", "[aout]", "-c:v", "libx264", "-preset", "medium", "-crf", "22",
+      "-map", "0:v", "-map", "[aout]", ...VIDEO_CODEC,
       "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-shortest", out],
     { stdio: "inherit" }
   );
