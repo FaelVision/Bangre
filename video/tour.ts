@@ -5,7 +5,8 @@
  * 2. FFMPEG=<ffmpeg.exe> python video/voix.py                    (voix off naturelle → video/out/audio ;
  *    sans réseau : powershell -ExecutionPolicy Bypass -File video/tts.ps1, voix Windows)
  * 3. FFMPEG=<chemin de ffmpeg.exe> npx tsx video/tour.ts           (tournage + montage)
- * 4. npm run demo:reset                                           (le tournage inscrit un élève et encaisse)
+ * 4. npm run demo:reset                                           (le tournage inscrit un élève et encaisse ;
+ *    l'école « Collège Wend-Panga » créée à l'écran est supprimée d'elle-même)
  *
  * Résultat : video/out/Bangre-presentation.mp4. Le texte dit par la voix off
  * et affiché en sous-titres est dans video/narration.json. Playwright a
@@ -18,11 +19,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, execSync, execFileSync, type ChildProcess } from "node:child_process";
 import { chromium, type Locator } from "playwright";
+import { PrismaClient } from "@prisma/client";
 
 const OUT = path.resolve(process.argv[2] ?? path.join(__dirname, "out"));
 const SERVER_PORT = 3101;
 const PROXY_PORT = 3100;
 const BASE = `http://127.0.0.1:${PROXY_PORT}`;
+/** The school created on camera: removed before and after, so the tour can be run again. */
+const SIGNUP = {
+  schoolName: "Collège Wend-Panga",
+  city: "Koudougou",
+  contactName: "Mariam Zongo",
+  email: "video@bangre.bf",
+  password: "Bangre2026",
+};
+const prisma = new PrismaClient();
+const removeSignupSchool = () => prisma.school.deleteMany({ where: { email: SIGNUP.email } });
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const narration: { id: string; text: string }[] = JSON.parse(
@@ -122,6 +135,7 @@ const OVERLAY = `
 type TourWindow = { __tourCaption?: (t: string) => void; __tourCard?: (title: string, sub: string) => void };
 
 async function main() {
+  await removeSignupSchool();
   await startServer();
   proxy.listen(PROXY_PORT);
 
@@ -170,6 +184,11 @@ async function main() {
       requestAnimationFrame(step);
     })`);
   }
+  /** The trial-expiry reminder pops over everything: out of the way before filming. */
+  async function dismissAlerts() {
+    const later = page.getByRole("button", { name: "Plus tard" });
+    if (await later.isVisible().catch(() => false)) await later.click();
+  }
   const nav = (name: string) => page.getByRole("link", { name: new RegExp(`^${name}`) }).first();
 
   /** One scene: subtitle on, actions, then hold until its voice-over is done. */
@@ -178,7 +197,15 @@ async function main() {
     const start = Date.now();
     marks.push({ id, at: (start - t0) / 1000 });
     await caption(text);
-    await actions();
+    try {
+      await actions();
+    } catch (err) {
+      // What the page showed when the scene broke: the video of a failed run
+      // is never finalised, so this is the only picture of it.
+      await page.screenshot({ path: path.join(OUT, `echec-${id}.png`) }).catch(() => {});
+      console.log(`échec de la scène ${id} sur ${page.url()} :`, (await page.innerText("body").catch(() => "")).slice(0, 600));
+      throw err;
+    }
     const remain = (durations[id] ?? 5) * 1000 + 800 - (Date.now() - start);
     if (remain > 0) await sleep(remain);
     console.log(`scene ${id} ${(Date.now() - start) / 1000}s`);
@@ -193,15 +220,57 @@ async function main() {
     await card("Bangre", "La scolarité de votre école, simplement");
   });
 
-  await scene("connexion", async () => {
+  await scene("inscription", async () => {
     await card("");
+    await click(page.getByRole("link", { name: /Inscrire mon établissement/ }).first());
+    await page.waitForURL("**/inscription");
+    await sleep(600);
+    await type(page.locator('input[name="schoolName"]'), SIGNUP.schoolName);
+    await type(page.locator('input[name="city"]'), SIGNUP.city);
+    await type(page.locator('input[name="contactName"]'), SIGNUP.contactName);
+    await type(page.locator('input[name="email"]'), SIGNUP.email);
+    await type(page.locator('input[name="password"]'), SIGNUP.password);
+    await click(page.locator('input[name="terms"]'));
+    await click(page.getByRole("button", { name: /Continuer vers l'abonnement/ }));
+    await page.waitForURL("**/abonnement", { timeout: 20000 });
+  });
+
+  await scene("abonnement", async () => {
+    await sleep(800);
+    await point(page.getByText(/Essai — \d+ jours? restants/).first());
+    await sleep(1800);
+    await point(page.getByText("CFA / mois").first());
+    await sleep(1500);
+    await smoothScroll(350, 1800);
+    const orange = page.getByText("Orange Money").first();
+    if (await orange.isVisible().catch(() => false)) await point(orange);
+    await sleep(1200);
+    await click(page.getByRole("button", { name: /Continuer l'essai sans payer/ }));
+    await page.waitForURL("**/tableau-de-bord", { timeout: 20000 });
+  });
+
+  await scene("premiers", async () => {
+    await dismissAlerts();
+    await sleep(1000);
+    await point(nav("Classes"));
+    await sleep(1500);
+    await point(nav("Élèves"));
+    await sleep(1200);
+  });
+
+  await scene("connexion", async () => {
+    await click(page.getByRole("button", { name: "Quitter" }));
+    await page.waitForURL("**/connexion", { timeout: 20000 });
+    // The server redirects to the address it listens on, behind the proxy that
+    // lets the tour cut the network: come back through the proxy.
+    if (!page.url().startsWith(BASE)) await page.goto(`${BASE}/connexion`, { waitUntil: "networkidle" });
+    await sleep(500);
     await type(page.locator('input[name="identifier"]'), "demo@bangre.bf");
     await type(page.locator('input[name="password"]'), "Bangre2026");
     await click(page.getByRole("button", { name: "Se connecter" }));
     await page.waitForURL("**/tableau-de-bord", { timeout: 20000 });
   });
-  const later = page.getByRole("button", { name: "Plus tard" });
-  if (await later.isVisible().catch(() => false)) await later.click();
+  await dismissAlerts();
 
   await scene("dashboard", async () => {
     await sleep(800);
@@ -398,7 +467,9 @@ main()
     console.error(e);
     process.exitCode = 1;
   })
-  .finally(() => {
+  .finally(async () => {
+    await removeSignupSchool().catch(() => {});
+    await prisma.$disconnect();
     if (server?.pid) execSync(`taskkill /pid ${server.pid} /T /F`, { stdio: "ignore" });
     setTimeout(() => process.exit(), 500);
   });
