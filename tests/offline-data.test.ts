@@ -365,3 +365,63 @@ test("les opérations en attente sont rejouées dans l'ordre de saisie", () => {
   assert.equal(data.students.find((s) => s.lastName === "DIALLO")?.matricule, "BG-454");
   assert.equal(data.students.find((s) => s.lastName === "OUEDRAOGO")?.matricule, "BG-455");
 });
+
+test("une saisie refusée par le serveur ou faite pour une autre école n'apparaît pas dans la copie locale", () => {
+  const payment = (id: string, extra: { schoolId?: string; rejectedAt?: number; lastError?: string }) =>
+    queued({
+      id,
+      kind: "payment",
+      payload: {
+        studentId: "student-2",
+        mode: "partial",
+        trancheIds: [],
+        amount: 10000,
+        method: "cash",
+        date: "2026-03-15",
+        receivedBy: "Awa",
+        notifyWhatsapp: false,
+      },
+      ...extra,
+    });
+
+  const data = applyPendingOperations(
+    mirror(),
+    [
+      payment("mine", { schoolId: "school-1" }),
+      payment("refused", { schoolId: "school-1", rejectedAt: NOW.getTime(), lastError: "Classe introuvable." }),
+      payment("other-school", { schoolId: "school-2" }),
+    ],
+    NOW
+  );
+  const detail = studentDetail(data, "student-2", NOW);
+  assert.ok(detail);
+  assert.equal(detail.summary.paid, 10000, "seul le paiement en attente de cette école compte");
+});
+
+test("un paiement saisi pour un élève créé hors ligne s'applique à cet élève", () => {
+  const create = queued({
+    id: "new-student",
+    kind: "student.create",
+    payload: { classId: "class-1", lastName: "zongo", firstName: "Paul", parentPhone: "70 00 00 01" },
+  });
+  const pay = queued({
+    id: "pay-new",
+    createdAt: NOW.getTime() + 1000,
+    kind: "payment",
+    payload: {
+      studentId: "local:new-student",
+      mode: "partial",
+      trancheIds: [],
+      amount: 25000,
+      method: "cash",
+      date: "2026-03-15",
+      receivedBy: "Awa",
+      notifyWhatsapp: false,
+    },
+  });
+  const data = applyPendingOperations(mirror(), [pay, create], NOW);
+  const detail = studentDetail(data, "local:new-student", NOW);
+  assert.ok(detail);
+  assert.equal(detail.student.lastName, "ZONGO");
+  assert.equal(detail.summary.paid, 25000);
+});

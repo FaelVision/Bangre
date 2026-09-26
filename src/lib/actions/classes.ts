@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { verifySession, getCurrentAcademicYear } from "@/lib/dal";
 import { parseDateInput } from "@/lib/date";
+import { serializeReminderTemplates } from "@/lib/reminder-message";
 
 export type ClassActionState = { error?: string } | undefined;
 
@@ -57,8 +58,8 @@ export async function createClassAction(
       name,
       level,
       order: (maxOrder._max.order ?? (LEVEL_ORDER[level] ?? 1) * 100) + 1,
-      reminderMessageTemplate:
-        "Bonjour {parent}, la {tranche} de la scolarité de {eleve} ({classe}), d'un montant de {montant} CFA, est attendue le {echeance}. Merci. — {ecole}",
+      // Null = the default messages (à venir, une tranche en retard, plusieurs).
+      reminderMessageTemplate: null,
     },
   });
 
@@ -95,7 +96,11 @@ export async function saveClassConfigAction(
   const reminderBeforeDays = Number(formData.get("reminderBeforeDays") || 7);
   const reminderAfterDays = (formData.get("reminderAfterDays") as string) || "3,10";
   const reminderHour = (formData.get("reminderHour") as string) || "08:00";
-  const reminderMessageTemplate = (formData.get("reminderMessageTemplate") as string) || "";
+  const reminderMessageTemplate = serializeReminderTemplates({
+    a_venir: (formData.get("reminderTemplate_a_venir") as string) ?? "",
+    retard: (formData.get("reminderTemplate_retard") as string) ?? "",
+    retards_multiples: (formData.get("reminderTemplate_retards_multiples") as string) ?? "",
+  });
 
   const labels = formData.getAll("tranche_label") as string[];
   const amounts = formData.getAll("tranche_amount") as string[];

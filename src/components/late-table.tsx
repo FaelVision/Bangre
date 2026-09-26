@@ -10,6 +10,7 @@ import { WhatsAppQueueModal, type PreparedReminder } from "@/components/whatsapp
 
 export type LateRow = {
   id: string;
+  matricule: string;
   lastName: string;
   firstName: string;
   className: string;
@@ -21,7 +22,16 @@ export type LateRow = {
   lastReminder: { sentAt: Date; status: string } | null;
 };
 
-export function LateTable({ rows, offline = false }: { rows: LateRow[]; offline?: boolean }) {
+export function LateTable({
+  rows,
+  offline = false,
+  onNavigate,
+}: {
+  rows: LateRow[];
+  offline?: boolean;
+  /** Set by the offline shell, which opens the student file itself. */
+  onNavigate?: (href: string) => void;
+}) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const [queue, setQueue] = useState<{ items: PreparedReminder[]; skipped: number } | null>(null);
@@ -76,7 +86,7 @@ export function LateTable({ rows, offline = false }: { rows: LateRow[]; offline?
           {rows.map((r, i) => (
             <tr
               key={r.id}
-              onClick={() => router.push(`/eleves/${r.id}`)}
+              onClick={() => (onNavigate ?? router.push)(`/eleves/${r.id}`)}
               className="border-t border-(--color-border-row) cursor-pointer hover:bg-(--color-bg-subtle)"
               style={{ background: i % 2 === 1 ? "var(--color-bg-zebra)" : undefined }}
             >

@@ -2,6 +2,7 @@
 
 import { enqueue, type StudentPayload } from "@/lib/offline-queue";
 import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
+import { isLocalId } from "@/lib/offline-data";
 
 /** Shared shape returned by the offline-aware student actions. */
 export type StudentFormState = { error?: string; queued?: string } | undefined;
@@ -43,7 +44,11 @@ export async function runOrQueue(
     ? ({ kind: "student.update", studentId: queued.studentId, payload: queued.payload } as const)
     : ({ kind: "student.create", payload: queued.payload } as const);
 
-  if (typeof navigator !== "undefined" && !navigator.onLine) {
+  // A student created on this device and not synced yet is unknown to the
+  // server: a correction to their file has to follow them through the outbox.
+  const localStudent = queued.studentId ? isLocalId(queued.studentId) : false;
+
+  if (localStudent || (typeof navigator !== "undefined" && !navigator.onLine)) {
     await enqueue(operation, queued.label);
     return { queued: queued.label };
   }

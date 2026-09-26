@@ -5,8 +5,14 @@ import { useRouter } from "next/navigation";
 import { formatAmount, formatCFA, formatDate } from "@/lib/format";
 import { getPaymentContextAction, recordPaymentAction, searchStudentsAction } from "@/lib/actions/payments";
 import { enqueuePayment, savePaymentContext, loadPaymentContext } from "@/lib/offline-queue";
-import { localPaymentContext, localStudentSearch, type PaymentContext } from "@/lib/payment-client";
+import {
+  localPaymentConfirmationLink,
+  localPaymentContext,
+  localStudentSearch,
+  type PaymentContext,
+} from "@/lib/payment-client";
 import { scheduleSnapshotRefresh } from "@/lib/offline-mirror";
+import { isLocalId } from "@/lib/offline-data";
 import { DateInput } from "@/components/date-input";
 
 type Context = PaymentContext;
@@ -90,7 +96,9 @@ export function PaymentModal({
   );
 
   const loadContext = useCallback((id: string) => {
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
+    // Offline, or a student created on this device that the server has not
+    // received yet: the device copy is the only one that knows them.
+    if (isLocalId(id) || (typeof navigator !== "undefined" && !navigator.onLine)) {
       void resolveOfflineContext(id);
       return;
     }
@@ -180,9 +188,21 @@ export function PaymentModal({
         : (studentHint ?? "élève")
     }`;
 
-    if (typeof navigator !== "undefined" && !navigator.onLine) {
+    /**
+     * Without a network the payment waits in the outbox; the parent can still
+     * be told at once — the confirmation is composed from the device copy,
+     * which already counts this payment.
+     */
+    const queueOffline = async () => {
       await enqueuePayment(payload, label);
-      setResult({ paymentId: "offline", receiptNumber: 0, amount });
+      const whatsappUrl = notifyWhatsapp
+        ? await localPaymentConfirmationLink(studentId, amount, date).catch(() => null)
+        : null;
+      setResult({ paymentId: "offline", receiptNumber: 0, amount, whatsappUrl });
+    };
+
+    if (isLocalId(studentId) || (typeof navigator !== "undefined" && !navigator.onLine)) {
+      await queueOffline();
       return;
     }
 
@@ -197,8 +217,7 @@ export function PaymentModal({
           setErrorMsg(res.error);
         }
       } catch {
-        await enqueuePayment(payload, label);
-        setResult({ paymentId: "offline", receiptNumber: 0, amount });
+        await queueOffline();
       }
     });
   }
@@ -478,9 +497,11 @@ export function PaymentModal({
                     {pending ? "Enregistrement…" : "Valider et générer le reçu"}
                   </button>
                 </div>
-                <div className="text-[12.5px] text-(--color-text-muted) text-center mt-3">
-                  Hors ligne : le reçu est numéroté localement, puis synchronisé.
-                </div>
+                {contextIsCached && (
+                  <div className="text-[12.5px] text-(--color-text-muted) text-center mt-3">
+                    Hors ligne : le reçu recevra son numéro à la synchronisation.
+                  </div>
+                )}
               </>
             )}
 

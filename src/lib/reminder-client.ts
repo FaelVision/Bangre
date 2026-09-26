@@ -2,7 +2,7 @@
 
 import { previewReminderAction, bulkPreviewRemindersAction, confirmReminderSentAction } from "@/lib/actions/students";
 import { previewForStudent } from "@/lib/reminder-message";
-import { findStudentWithPayments, studentsWithPayments } from "@/lib/offline-data";
+import { findStudentWithPayments, isLocalId, studentsWithPayments } from "@/lib/offline-data";
 import { loadLocalData, scheduleSnapshotRefresh } from "@/lib/offline-mirror";
 import { enqueue } from "@/lib/offline-queue";
 
@@ -48,7 +48,8 @@ async function localPreviews(studentIds: string[]) {
 
 /** One student. Returns the reason the rappel cannot be sent, if any. */
 export async function prepareReminder(studentId: string): Promise<PreparedReminder | { error: string }> {
-  if (!isOffline()) {
+  // A student created on this device and not synced yet only exists here.
+  if (!isOffline() && !isLocalId(studentId)) {
     try {
       const res = await previewReminderAction(studentId);
       if ("error" in res) return { error: res.error ?? "Rappel indisponible." };
@@ -70,7 +71,7 @@ export async function prepareReminder(studentId: string): Promise<PreparedRemind
 export async function prepareReminders(studentIds: string[]): Promise<{ prepared: PreparedReminder[]; skipped: number }> {
   if (studentIds.length === 0) return { prepared: [], skipped: 0 };
 
-  if (!isOffline()) {
+  if (!isOffline() && !studentIds.some(isLocalId)) {
     try {
       const res = await bulkPreviewRemindersAction(studentIds);
       return { prepared: res.prepared, skipped: res.skipped };
@@ -88,7 +89,7 @@ export async function prepareReminders(studentIds: string[]): Promise<{ prepared
  * showing "aucun rappel" the moment WhatsApp was opened.
  */
 export async function confirmReminderSent(item: PreparedReminder, message: string): Promise<{ queued: boolean }> {
-  if (!isOffline()) {
+  if (!isOffline() && !isLocalId(item.studentId)) {
     try {
       await confirmReminderSentAction(item.studentId, item.trancheId, message);
       scheduleSnapshotRefresh();

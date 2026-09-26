@@ -34,16 +34,15 @@ Aucune des deux ne passe par une API métier — volontairement, pour ne dépend
 - **WhatsApp** (`src/lib/whatsapp.ts`) : rappels et confirmations de paiement sont des liens `wa.me` pré-remplis, ouverts et envoyés manuellement par l'utilisateur depuis son propre WhatsApp.
 - **Mobile Money (abonnement)** : l'établissement envoie lui-même la cotisation (Orange Money / Moov Money) vers le numéro Bangre affiché sur `/abonnement` — le bouton « Composer » ouvre le clavier d'appel avec le code USSD pré-rempli. Le paiement est enregistré comme **en attente**, et un administrateur le confirme manuellement depuis `/admin` une fois la réception vérifiée sur le compte Mobile Money (`src/lib/subscription-core.ts` : `recordSubscriptionPayment` / `confirmSubscriptionPayment` / `rejectSubscriptionPayment`) — c'est seulement cette confirmation qui active ou prolonge l'abonnement.
 
-### Rappels automatiques
+### Messages de rappel
 
-`POST /api/cron/reminders` (protégé par `CRON_SECRET` en en-tête `Authorization: Bearer`) est le point d'entrée horaire : appelez-le une fois par heure depuis un planificateur externe (Render Cron Job, GitHub Actions, cron-job.org). Pour chaque école abonnée, chaque classe dont les rappels sont activés envoie **à son heure configurée** (`reminderHour`, fuseau UTC+0) :
+Le rappel ne dit pas la même chose selon la situation de l'élève (`src/lib/reminder-message.ts`, partagé entre le serveur et l'appareil hors ligne) :
 
-- un rappel **avant** échéance dès que la date d'une tranche non soldée entre dans la fenêtre `reminderBeforeDays` ;
-- un rappel **après** échéance à chaque palier de `reminderAfterDays` (« 3,10 » → à 3 puis 10 jours de retard).
+- **échéance à venir** — « la 2e tranche … est attendue le 15/01/2027 » ;
+- **une tranche en retard** — « la 1re tranche … était attendue le 15/10/2026. Elle a maintenant 12 jours de retard » ;
+- **plusieurs tranches en retard** — le message les liste toutes (montant restant, échéance, jours de retard de chacune) et donne le total à régulariser. Les frais d'inscription impayés comptent parmi ces retards.
 
-Tout est idempotent (un rappel `(élève, tranche, déclencheur)` n'est envoyé qu'une fois, `Reminder.trancheId`) et borné (jamais plus d'un rappel par élève / 72 h, jamais si la famille est à jour). La logique de sélection est isolée et testée dans `src/lib/reminder-schedule.ts` ; l'envoi passe par `src/lib/reminders-core.ts`, partagé avec les rappels manuels et la file hors ligne.
-
-`GET/POST /api/whatsapp/webhook` reçoit les accusés de livraison Meta (`WHATSAPP_WEBHOOK_VERIFY_TOKEN`) et fait passer chaque `Reminder` de `sent` → `delivered` → `read` (ou `failed`) via `providerMessageId`.
+Chaque classe peut reformuler les trois messages dans sa configuration, avec un aperçu du message reçu par le parent. Variables : `{parent}`, `{eleve}`, `{classe}`, `{tranche}`, `{montant}`, `{echeance}`, `{ecole}`, plus `{retard}` (« 12 jours »), `{nombre}` (tranches en retard) et `{detail}` (une ligne par tranche en retard). Les trois textes sont stockés en JSON dans `SchoolClass.reminderMessageTemplate` (`null` = messages par défaut) ; un ancien modèle unique y reste lu comme le message « à venir », les deux autres prenant leur valeur par défaut.
 
 ## Compte de démonstration
 
@@ -92,17 +91,21 @@ Le service worker précharge le shell **et les fichiers dont il a besoin pour d�
 - modifier une fiche élève ;
 - envoyer un rappel WhatsApp : le message est composé localement par `src/lib/reminder-message.ts` (le même code que le serveur), le lien `wa.me` s'ouvre, et l'envoi est enregistré à la synchronisation.
 
-Ces saisies sont **rejouées sur la copie locale** (`applyPendingOperations`) : un paiement encaissé hors ligne apparaît aussitôt sur la fiche de l'élève, dans le total de la classe, sur le tableau de bord et dans le journal (marqué « Hors ligne », sans numéro de reçu). La barre latérale montre en permanence l'état (« En ligne » / « Hors ligne »), le nombre d'enregistrements en attente et leur libellé.
+Ces saisies sont **rejouées sur la copie locale** (`applyPendingOperations`) : un paiement encaissé hors ligne apparaît aussitôt sur la fiche de l'élève, dans le total de la classe, sur le tableau de bord et dans le journal (marqué « Hors ligne », sans numéro de reçu). Un élève ajouté hors ligne peut aussitôt être ouvert, corrigé, encaissé et relancé : à la synchronisation, les saisies qui le visent reprennent l'identifiant que le serveur vient de lui donner. La confirmation WhatsApp d'un paiement hors ligne est proposée tout de suite, composée depuis la copie locale (le numéro de reçu n'y figure pas, il est attribué à la synchronisation). La barre latérale montre en permanence l'état (« En ligne » / « Hors ligne »), le nombre d'enregistrements en attente et leur libellé.
 
 **Synchroniser.** Au retour du réseau, la file est rejouée dans l'ordre contre `/api/sync` — automatiquement (événement `online`, plus l'API Background Sync quand le navigateur la propose) ou via « Synchroniser maintenant » — puis la copie locale est re-téléchargée : l'appareil voit alors ses propres écritures telles que le serveur les a enregistrées (numéros de reçu, matricules, identifiants) et ce que les autres postes ont fait entre-temps. Le serveur applique exactement les mêmes règles qu'en ligne : les écritures passent par `students-core.ts`, `payments-core.ts` et `reminders-core.ts`, partagés avec les Server Actions.
 
-Une entrée que le serveur refuse définitivement (matricule en double, élève supprimé entre-temps) est retirée de la file avec son motif conservé, pour qu'une seule ligne fautive ne bloque pas indéfiniment les suivantes. Une panne réseau, elle, interrompt la reprise et laisse tout en attente.
+Chaque entrée peut arriver deux fois sans effet de bord — sur une connexion faible, le serveur peut l'appliquer sans que sa réponse n'atteigne l'appareil : un paiement rejoué renvoie le paiement déjà enregistré (repère `sync:<id>` dans `Payment.note`, pas de second reçu), un élève ou un rappel déjà créé est reconnu. Si le matricule proposé hors ligne a été pris entre-temps par un autre poste, l'élève reçoit le suivant libre plutôt que d'être refusé.
 
-**Ce qui reste en ligne** (le shell l'annonce clairement au lieu d'échouer) : les exports PDF / Excel et les reçus, l'import de listes d'élèves, la création et la configuration d'une classe, le passage d'année, l'abonnement et l'administration. Il n'y a pas non plus de résolution de conflits multi-appareils : deux postes qui modifient la même fiche hors ligne appliqueront leurs versions dans l'ordre d'arrivée, la dernière l'emportant.
+Une entrée que le serveur refuse définitivement (classe supprimée, élève supprimé entre-temps…) est mise de côté avec son motif, **affichée dans la barre latérale jusqu'à ce que l'utilisateur la retire** — elle ne bloque pas les suivantes et ne disparaît pas en silence. Une panne réseau, elle, interrompt la reprise et laisse tout en attente. Chaque saisie retient l'établissement pour lequel elle a été faite : sur un poste partagé, elle attend la reconnexion de ce compte au lieu d'être appliquée à un autre.
+
+L'export Excel des retards se fait aussi hors ligne, écrit par l'appareil à partir des lignes affichées.
+
+**Ce qui reste en ligne** (le shell l'annonce clairement au lieu d'échouer) : les exports PDF et les reçus PDF, l'import de listes d'élèves, la création et la configuration d'une classe, le passage d'année, l'abonnement et l'administration. Il n'y a pas non plus de résolution de conflits multi-appareils : deux postes qui modifient la même fiche hors ligne appliqueront leurs versions dans l'ordre d'arrivée, la dernière l'emportant.
 
 `experimental.useOffline` (Next 16) n'est **pas** activé volontairement : il ferait attendre indéfiniment une Server Action lancée sans réseau, au lieu de la laisser échouer immédiatement pour tomber dans la file locale.
 
-**Tester.** `npm run build && npx tsx _offline-test.ts` lance un vrai navigateur, se connecte, **arrête le serveur**, consulte des pages jamais visitées, encaisse un paiement, ajoute un élève, relance le serveur et vérifie que tout est arrivé en base.
+**Tester.** `npm run build && npx tsx _offline-test.ts` lance un vrai navigateur, se connecte, **arrête le serveur**, consulte des pages jamais visitées, encaisse un paiement, ajoute un élève puis l'encaisse aussitôt, prépare un rappel, relance le serveur et vérifie que tout est arrivé en base, sur le bon élève. `tests/integration/sync.test.ts` vérifie qu'une entrée rejouée deux fois ne crée ni doublon ni second numéro de reçu.
 
 ## Simplifications par rapport à la maquette
 

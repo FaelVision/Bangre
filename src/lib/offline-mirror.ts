@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getDb, MIRROR_STORE } from "@/lib/offline-db";
 import { applyPendingOperations, reviveSnapshot, type MirrorData } from "@/lib/offline-data";
-import { flushQueue, listQueued, QUEUE_CHANGED } from "@/lib/offline-queue";
+import { flushQueue, listPending, QUEUE_CHANGED } from "@/lib/offline-queue";
 
 /**
  * The local copy of the school, kept on the device.
@@ -64,7 +64,7 @@ export async function loadSnapshot(): Promise<MirrorData | null> {
 export async function loadLocalData(): Promise<MirrorData | null> {
   const snapshot = await loadSnapshot();
   if (!snapshot) return null;
-  return applyPendingOperations(snapshot, await listQueued());
+  return applyPendingOperations(snapshot, await listPending());
 }
 
 export async function snapshotAge(): Promise<number | null> {

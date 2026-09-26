@@ -8,7 +8,7 @@ import {
   type StudentWithPayments,
 } from "@/lib/tuition";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
-import { formatCFA, formatDate } from "@/lib/format";
+import { paymentConfirmationMessage } from "@/lib/payment-message";
 
 export type RecordPaymentInput = {
   studentId: string;
@@ -20,6 +20,13 @@ export type RecordPaymentInput = {
   receivedBy: string;
   notifyWhatsapp: boolean;
   offlineCreated?: boolean;
+  /**
+   * Identifies a payment replayed from a device outbox. Kept in the payment's
+   * (otherwise unused) `note`, so a second copy of the same entry — its first
+   * answer lost on a weak connection — returns the payment already recorded
+   * instead of charging the family twice.
+   */
+  clientRef?: string;
 };
 
 export type RecordPaymentResult =
@@ -33,6 +40,17 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
   })) as StudentWithPayments | null;
 
   if (!student) return { ok: false, error: "Élève introuvable." };
+
+  if (input.clientRef) {
+    const already = await prisma.payment.findFirst({
+      where: { schoolId, note: input.clientRef },
+      select: { id: true, receiptNumber: true, amount: true },
+    });
+    if (already) {
+      return { ok: true, paymentId: already.id, receiptNumber: already.receiptNumber, amount: already.amount, whatsappUrl: null };
+    }
+  }
+
   if (!student.class.tuitionAmount && !student.tuitionOverride) {
     return { ok: false, error: "La scolarité de cette classe n'est pas configurée." };
   }
@@ -58,6 +76,7 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
         receivedBy: input.receivedBy || undefined,
         date,
         receiptNumber: school.receiptCounter,
+        note: input.clientRef ?? null,
         offlineCreated: Boolean(input.offlineCreated),
         synced: true,
         whatsappNotified: false,
@@ -79,7 +98,16 @@ export async function persistPayment(schoolId: string, input: RecordPaymentInput
     const remainingAfter = refreshed
       ? computeStudentSummary(refreshed).remaining
       : Math.max(0, student.class.tuitionAmount ?? 0);
-    const message = `Bonjour, nous confirmons la réception de ${formatCFA(amount)} pour la scolarité de ${student.firstName} ${student.lastName} (${student.class.name}) le ${formatDate(date)}. Reste à payer : ${formatCFA(remainingAfter)}. Merci. — ${result.schoolName}, reçu N° ${result.receiptNumber}`;
+    const message = paymentConfirmationMessage({
+      amount,
+      studentFirstName: student.firstName,
+      studentLastName: student.lastName,
+      className: student.class.name,
+      date,
+      remainingAfter,
+      schoolName: result.schoolName,
+      receiptNumber: result.receiptNumber,
+    });
     whatsappUrl = buildWhatsAppLink(student.parentPhone, message);
     await prisma.payment.update({ where: { id: result.paymentId }, data: { whatsappNotified: true } });
   }

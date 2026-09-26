@@ -35,8 +35,7 @@ async function findOrCreateClassInYear(
       name,
       level,
       order,
-      reminderMessageTemplate:
-        "Bonjour {parent}, la {tranche} de la scolarité de {eleve} ({classe}), d'un montant de {montant} CFA, est attendue le {echeance}. Merci. — {ecole}",
+      reminderMessageTemplate: null, // the default messages
     },
   });
 }

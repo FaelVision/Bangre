@@ -24,6 +24,7 @@ export default async function LatePaymentsPage({
 
   const rows: LateRow[] = data.rows.map((r) => ({
     id: r.student.id,
+    matricule: r.student.matricule,
     lastName: r.student.lastName,
     firstName: r.student.firstName,
     className: r.student.class.name,

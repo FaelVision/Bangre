@@ -9,8 +9,15 @@ import { Field, Label, TextInput, Select, Textarea } from "@/components/form";
 import { DateInput } from "@/components/date-input";
 import { Button, Card } from "@/components/ui";
 import { formatAmount } from "@/lib/format";
+import {
+  DEFAULT_REMINDER_TEMPLATES,
+  REMINDER_SITUATIONS,
+  SAMPLE_REMINDER_VARS,
+  fillReminderTemplate,
+  parseReminderTemplates,
+  type ReminderTemplates,
+} from "@/lib/reminder-message";
 
-const VARIABLES = ["{parent}", "{eleve}", "{classe}", "{tranche}", "{montant}", "{echeance}", "{ecole}"];
 
 function isoDate(d: Date) {
   return new Date(d).toISOString().slice(0, 10);
@@ -254,33 +261,73 @@ export function ConfigForm({
           </Card>
         </div>
 
-        <Card>
-          <div className="text-[15px] font-semibold">3 · Message de rappel</div>
-          <div className="text-[13px] text-(--color-text-muted) mt-1.5 leading-relaxed">
-            Utilisé pour pré-remplir le message WhatsApp quand vous cliquez sur « Envoyer un rappel » — vous
-            l&apos;envoyez vous-même, rien n&apos;est expédié automatiquement.
-          </div>
-          <div className="text-[12.5px] font-semibold text-(--color-text-secondary) mt-4.5 mb-2">
-            Message envoyé au parent
-          </div>
-          <Textarea
-            name="reminderMessageTemplate"
-            defaultValue={clazz.reminderMessageTemplate ?? ""}
-            rows={5}
-            className="bg-(--color-success-bg) border-none text-[13.5px] leading-relaxed text-[#20301F]"
-          />
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {VARIABLES.map((v) => (
-              <span
-                key={v}
-                className="text-xs px-2.5 py-1 rounded-full border border-(--color-border-strong) bg-(--color-bg-subtle)"
-              >
-                {v}
-              </span>
-            ))}
-          </div>
-        </Card>
+        <ReminderMessages stored={clazz.reminderMessageTemplate} />
       </div>
     </form>
+  );
+}
+
+/**
+ * The three rappel messages of the class: before the due date, one tranche
+ * late, several tranches late. Each shows what a parent would receive.
+ */
+function ReminderMessages({ stored }: { stored: string | null }) {
+  const [templates, setTemplates] = useState<ReminderTemplates>(() => parseReminderTemplates(stored));
+
+  return (
+    <Card>
+      <div className="text-[15px] font-semibold">3 · Messages de rappel</div>
+      <div className="text-[13px] text-(--color-text-muted) mt-1.5 leading-relaxed">
+        Utilisés pour pré-remplir le message WhatsApp quand vous cliquez sur « Envoyer un rappel » — vous
+        l&apos;envoyez vous-même, rien n&apos;est expédié automatiquement. Bangre choisit le message selon la
+        situation de l&apos;élève.
+      </div>
+      <div className="grid gap-5 mt-4.5">
+        {REMINDER_SITUATIONS.map((situation) => {
+          const value = templates[situation.key];
+          const isDefault = value === DEFAULT_REMINDER_TEMPLATES[situation.key];
+          return (
+            <div key={situation.key}>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <div className="text-[13.5px] font-semibold text-(--color-text)">{situation.title}</div>
+                <div className="text-[12px] text-(--color-text-muted)">{situation.hint}</div>
+                {!isDefault && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTemplates((prev) => ({ ...prev, [situation.key]: DEFAULT_REMINDER_TEMPLATES[situation.key] }))
+                    }
+                    className="ml-auto text-[12px] font-semibold text-(--color-primary) cursor-pointer"
+                  >
+                    Rétablir le message par défaut
+                  </button>
+                )}
+              </div>
+              <Textarea
+                name={`reminderTemplate_${situation.key}`}
+                value={value}
+                onChange={(e) => setTemplates((prev) => ({ ...prev, [situation.key]: e.target.value }))}
+                rows={situation.key === "retards_multiples" ? 6 : 4}
+                className="bg-(--color-success-bg) border-none text-[13.5px] leading-relaxed text-[#20301F] mt-2"
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {situation.variables.map((v) => (
+                  <span
+                    key={v}
+                    className="text-xs px-2.5 py-1 rounded-full border border-(--color-border-strong) bg-(--color-bg-subtle)"
+                  >
+                    {v}
+                  </span>
+                ))}
+              </div>
+              <div className="text-[12px] text-(--color-text-muted) mt-2.5">Exemple reçu par le parent :</div>
+              <div className="text-[12.5px] leading-relaxed whitespace-pre-line rounded-[10px] border border-(--color-border) bg-white px-3.5 py-2.5 mt-1">
+                {fillReminderTemplate(value || DEFAULT_REMINDER_TEMPLATES[situation.key], SAMPLE_REMINDER_VARS[situation.key])}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

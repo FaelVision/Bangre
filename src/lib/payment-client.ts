@@ -1,6 +1,8 @@
 "use client";
 
-import { computeTrancheStates } from "@/lib/tuition";
+import { computeStudentSummary, computeTrancheStates } from "@/lib/tuition";
+import { paymentConfirmationMessage } from "@/lib/payment-message";
+import { buildWhatsAppLink } from "@/lib/whatsapp-link";
 import { findStudentWithPayments } from "@/lib/offline-data";
 import { loadLocalData } from "@/lib/offline-mirror";
 import { searchStudents } from "@/lib/offline-queries";
@@ -75,4 +77,32 @@ export async function localStudentSearch(query: string) {
   const data = await loadLocalData();
   if (!data) return [];
   return searchStudents(data, query);
+}
+
+/**
+ * The parent confirmation for a payment just queued on the device. The local
+ * copy already includes that payment (the outbox is folded in), so "reste à
+ * payer" is the amount after it — the same figure the server would write.
+ */
+export async function localPaymentConfirmationLink(
+  studentId: string,
+  amount: number,
+  date: string
+): Promise<string | null> {
+  const data = await loadLocalData();
+  if (!data) return null;
+  const student = findStudentWithPayments(data, studentId);
+  if (!student?.parentPhone) return null;
+
+  const message = paymentConfirmationMessage({
+    amount,
+    studentFirstName: student.firstName,
+    studentLastName: student.lastName,
+    className: student.class.name,
+    date: date ? new Date(date) : new Date(),
+    remainingAfter: computeStudentSummary(student).remaining,
+    schoolName: data.school.name,
+    receiptNumber: null,
+  });
+  return buildWhatsAppLink(student.parentPhone, message);
 }

@@ -3,13 +3,14 @@ import { PageHeader } from "@/components/ui";
 import { ListFilters } from "@/components/list-filters";
 import { LateTable, type LateRow } from "@/components/late-table";
 import { SendAllRemindersButton } from "@/components/send-all-button";
+import { OfflineCsvExport } from "@/components/offline-csv-export";
 
 export type LateViewFilters = { classe?: string; jours?: string; whatsapp?: string };
 
 /**
- * Retards de paiement. Offline the exports step aside — they are rendered by
- * the server — but the list, the filters and the rappels WhatsApp all work
- * from the local copy.
+ * Retards de paiement. Offline the PDF steps aside — it is rendered by the
+ * server — while the Excel list is written on the device from the same rows;
+ * the list, the filters and the rappels WhatsApp all work from the local copy.
  */
 export function LateView({
   rows,
@@ -51,6 +52,7 @@ export function LateView({
         subtitle={`${rows.length} élèves · ${formatAmount(totalDue)} CFA dus`}
         actions={
           <>
+            {offline && <OfflineCsvExport rows={rows} />}
             {!offline && (
               <>
                 <a
@@ -124,7 +126,7 @@ export function LateView({
           </a>
         </div>
 
-        <LateTable rows={rows} offline={offline} />
+        <LateTable rows={rows} offline={offline} onNavigate={onNavigate} />
 
         <div className="text-[12.5px] text-(--color-text-muted) mt-3">
           {whatsappFilter === "injoignable"

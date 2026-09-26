@@ -91,6 +91,7 @@ export function StudentsListView({
           showClassColumn={showClassColumn}
           classOptions={classOptions}
           offline={offline}
+          onNavigate={onNavigate}
         />
 
         <div className="flex items-center justify-between mt-3.5 text-[13px] text-(--color-text-muted)">

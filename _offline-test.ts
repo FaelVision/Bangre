@@ -234,10 +234,13 @@ async function main() {
   });
   check("formulaire « nouvel élève » utilisable hors ligne", classId.length > 0, classId.slice(0, 12));
 
+  // Put the student in a class whose tuition is configured, so they can pay.
+  await page.selectOption('select[name="classId"]', student.classId);
   await page.fill('input[name="matricule"]', "OFFLINE-1");
   await page.fill('input[name="lastName"]', "SANOU");
   await page.fill('input[name="firstName"]', "Hors-Ligne");
   await page.fill('input[placeholder="jj/mm/aaaa"]', "26/11/2006");
+  await page.fill('input[name="parentPhone"]', "70 99 88 77");
   await page.getByRole("button", { name: /Ajouter l'élève|Enregistrement/ }).click();
   await page.waitForTimeout(2500);
   const queuedNotice = await page.textContent("body");
@@ -250,6 +253,37 @@ async function main() {
   await page.waitForTimeout(2000);
   const listWithQueued = await page.textContent("body");
   check("l'élève saisi hors ligne apparaît dans la liste locale", (listWithQueued ?? "").includes("Hors-Ligne"));
+
+  // --- encaisser l'élève qui n'existe encore que sur l'appareil ---------------
+  // Until now this payment pointed at the device's temporary id and the server
+  // refused it at sync: the money was recorded nowhere.
+  await page.click('tr:has-text("Hors-Ligne")');
+  await page.waitForTimeout(1500);
+  check("la fiche de l'élève saisi hors ligne s'ouvre", page.url().includes("/eleves/local"), page.url());
+
+  await page.click('button:has-text("Enregistrer un paiement")');
+  await page.waitForTimeout(1500);
+  await page.click('button:has-text("Paiement partiel")');
+  await page.fill('input[type="number"]', "3000");
+  await page.click('button:has-text("Valider et générer le reçu")');
+  await page.waitForTimeout(2000);
+  const paidNew = await page.textContent("body");
+  check("paiement de l'élève saisi hors ligne enregistré", (paidNew ?? "").includes("Paiement enregistré hors ligne"));
+  check(
+    "confirmation WhatsApp au parent proposée hors ligne",
+    (await page.locator('a:has-text("Confirmer par WhatsApp")').count()) > 0
+  );
+  await page.click('button:has-text("Fermer")').catch(() => {});
+  await page.waitForTimeout(800);
+
+  // --- rappel hors ligne : plusieurs tranches en retard -----------------------
+  await page.goto(`${BASE}/eleves/${student.id}`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  await page.locator('button:has-text("Envoyer un rappel")').first().click();
+  await page.waitForTimeout(1500);
+  const reminderText = await page.locator("textarea").first().inputValue().catch(() => "");
+  check("rappel préparé hors ligne", reminderText.includes(student.firstName), reminderText.slice(0, 60));
+  await page.click('button:has-text("Annuler")').catch(() => {});
 
   // --- retour du réseau ------------------------------------------------------
   await startServer();
@@ -275,6 +309,15 @@ async function main() {
     "sa date de naissance est correcte",
     createdStudent?.birthDate?.toISOString().slice(0, 10) === "2006-11-26",
     String(createdStudent?.birthDate)
+  );
+
+  const newStudentPayment = createdStudent
+    ? await prisma.payment.findFirst({ where: { studentId: createdStudent.id, amount: 3000 } })
+    : null;
+  check(
+    "le paiement de l'élève saisi hors ligne est arrivé, sur le bon élève",
+    newStudentPayment !== null && newStudentPayment.receiptNumber > 0,
+    newStudentPayment ? `reçu N° ${newStudentPayment.receiptNumber}` : "absent"
   );
 
   const offlinePayment = await prisma.payment.findFirst({
@@ -319,6 +362,14 @@ async function main() {
   );
 
   // --- nettoyage ---------------------------------------------------------------
+  if (newStudentPayment) {
+    await prisma.paymentAllocation.deleteMany({ where: { paymentId: newStudentPayment.id } });
+    await prisma.payment.delete({ where: { id: newStudentPayment.id } });
+    await prisma.school.update({
+      where: { id: newStudentPayment.schoolId },
+      data: { receiptCounter: { decrement: 1 } },
+    });
+  }
   if (createdStudent) await prisma.student.delete({ where: { id: createdStudent.id } });
   if (offlinePayment) {
     await prisma.paymentAllocation.deleteMany({ where: { paymentId: offlinePayment.id } });

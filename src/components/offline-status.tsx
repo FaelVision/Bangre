@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { listQueued, QUEUE_CHANGED, type QueuedEntry } from "@/lib/offline-queue";
+import { currentSchoolId, listQueued, removeQueued, QUEUE_CHANGED, type QueuedEntry } from "@/lib/offline-queue";
 import { MIRROR_CHANGED, refreshIfStale, snapshotAge, syncAll } from "@/lib/offline-mirror";
 
 function subscribeToConnectivity(callback: () => void) {
@@ -22,11 +22,27 @@ export function useOnlineStatus() {
   );
 }
 
-export function usePendingQueue() {
-  const [items, setItems] = useState<QueuedEntry[]>([]);
+export type OutboxState = {
+  /** Waiting to reach the server. */
+  pending: QueuedEntry[];
+  /** Refused by the server for good — kept until the user has read why. */
+  rejected: QueuedEntry[];
+  /** Typed for another school signed in on this device earlier. */
+  otherSchool: QueuedEntry[];
+};
+
+export function usePendingQueue(): OutboxState {
+  const [state, setState] = useState<OutboxState>({ pending: [], rejected: [], otherSchool: [] });
 
   const refresh = useCallback(async () => {
-    setItems(await listQueued());
+    const [all, schoolId] = await Promise.all([listQueued(), currentSchoolId()]);
+    const next: OutboxState = { pending: [], rejected: [], otherSchool: [] };
+    for (const entry of all) {
+      if (entry.rejectedAt) next.rejected.push(entry);
+      else if (schoolId && entry.schoolId && entry.schoolId !== schoolId) next.otherSchool.push(entry);
+      else next.pending.push(entry);
+    }
+    setState(next);
   }, []);
 
   useEffect(() => {
@@ -37,10 +53,15 @@ export function usePendingQueue() {
     refresh();
     const handler = () => refresh();
     window.addEventListener(QUEUE_CHANGED, handler);
-    return () => window.removeEventListener(QUEUE_CHANGED, handler);
+    // Signing into another school replaces the copy, which changes whose entries are whose.
+    window.addEventListener(MIRROR_CHANGED, handler);
+    return () => {
+      window.removeEventListener(QUEUE_CHANGED, handler);
+      window.removeEventListener(MIRROR_CHANGED, handler);
+    };
   }, [refresh]);
 
-  return items;
+  return state;
 }
 
 /** How old the copy of the school on this device is, in minutes. */
@@ -109,7 +130,7 @@ export function OfflineSync() {
 
 export function OfflineStatusCard() {
   const online = useOnlineStatus();
-  const items = usePendingQueue();
+  const { pending: items, rejected, otherSchool } = usePendingQueue();
   const age = useSnapshotAge();
   const router = useRouter();
 
@@ -124,11 +145,18 @@ export function OfflineStatusCard() {
         // Send what was captured offline, then pull the school back down so the
         // device sees the server's version of its own writes.
         const res = await syncAll();
-        if (res.synced > 0) {
-          setReport(`${res.synced} enregistrement(s) synchronisé(s).`);
-          router.refresh();
-        } else if (res.errors.length) {
-          setReport(res.errors[0]);
+        if (res.synced > 0) router.refresh();
+        if (res.synced > 0 || res.errors.length) {
+          // Both halves matter: what went through, and what did not.
+          setReport(
+            [
+              res.synced > 0 ? `${res.synced} enregistrement(s) synchronisé(s).` : null,
+              res.errors.length ? res.errors[0] : null,
+              res.errors.length > 1 ? `(+${res.errors.length - 1} autre(s) problème(s))` : null,
+            ]
+              .filter(Boolean)
+              .join(" ")
+          );
         } else if (!silent) {
           setReport(res.refreshed ? "Données à jour sur cet appareil." : "Synchronisation impossible pour le moment.");
         }
@@ -207,6 +235,35 @@ export function OfflineStatusCard() {
             ? "Copie locale des données : pas encore téléchargée."
             : `Copie locale des données : ${ageLabel(age)}.`}
       </div>
+
+      {rejected.length > 0 && (
+        <div className="grid gap-1.5 mt-2 rounded-lg border border-(--color-danger-border) bg-(--color-danger-bg-soft) p-2">
+          <div className="text-[11.5px] font-semibold text-(--color-danger-text)">
+            Refusé{rejected.length > 1 ? "s" : ""} par le serveur — à ressaisir en ligne :
+          </div>
+          {rejected.map((item) => (
+            <div key={item.id} className="flex items-start gap-1.5 text-[11.5px] text-(--color-text-secondary)">
+              <span className="flex-1 min-w-0">
+                · {item.label}
+                {item.lastError && <span className="text-(--color-danger-text)"> — {item.lastError}</span>}
+              </span>
+              <button
+                type="button"
+                onClick={() => void removeQueued(item.id)}
+                className="shrink-0 text-[11px] font-semibold text-(--color-primary) cursor-pointer"
+              >
+                J&apos;ai compris
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {otherSchool.length > 0 && (
+        <div className="text-[11.5px] text-(--color-text-muted) mt-1.5 leading-snug">
+          {otherSchool.length} saisie(s) d&apos;un autre établissement attendent sa prochaine connexion sur cet appareil.
+        </div>
+      )}
 
       {pending > 0 && (
         <div className="grid gap-1 mt-2 max-h-[104px] overflow-y-auto">

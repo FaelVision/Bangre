@@ -35,12 +35,15 @@ export function StudentsTable({
   showClassColumn,
   classOptions,
   offline = false,
+  onNavigate,
 }: {
   students: StudentRow[];
   showClassColumn: boolean;
   classOptions?: { id: string; name: string }[];
   /** Hides what needs the server: moving students between classes is not queued. */
   offline?: boolean;
+  /** Set by the offline shell, which opens the student file itself instead of asking the server. */
+  onNavigate?: (href: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
@@ -107,7 +110,7 @@ export function StudentsTable({
           {students.map((s, i) => (
             <tr
               key={s.id}
-              onClick={() => router.push(`/eleves/${s.id}`)}
+              onClick={() => (onNavigate ?? router.push)(`/eleves/${s.id}`)}
               className="border-t border-(--color-border-row) cursor-pointer hover:bg-(--color-bg-subtle)"
               style={{ background: i % 2 === 1 ? "var(--color-bg-zebra)" : undefined }}
             >

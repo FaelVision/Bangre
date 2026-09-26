@@ -1,6 +1,6 @@
 "use client";
 
-import { getDb, QUEUE_STORE as STORE, CONTEXT_STORE } from "@/lib/offline-db";
+import { getDb, QUEUE_STORE as STORE, CONTEXT_STORE, MIRROR_STORE } from "@/lib/offline-db";
 
 /**
  * Outbox of writes captured while offline. Everything the secretary does at the
@@ -43,7 +43,22 @@ export type QueuedEntry = QueuedOperation & {
   label: string;
   attempts: number;
   lastError?: string;
+  /**
+   * The school the entry was typed for. A shared computer can be signed into
+   * another school before the network comes back: its entries must wait for
+   * their own account, never be replayed into someone else's.
+   */
+  schoolId?: string;
+  /**
+   * Set when the server refused the entry for good (class deleted, invalid
+   * data…). The entry is kept, visible, until the user dismisses it: a payment
+   * typed at the counter must never vanish silently.
+   */
+  rejectedAt?: number;
 };
+
+/** Prefix of the ids the device gives to students it created offline (see `offline-data.ts`). */
+const LOCAL_STUDENT_PREFIX = "local:";
 
 export const QUEUE_CHANGED = "bangre:queue-changed";
 
@@ -63,12 +78,32 @@ function notifyChanged() {
   window.dispatchEvent(new CustomEvent(QUEUE_CHANGED));
 }
 
+/** The school whose copy is on this device — the one the user is working in. */
+export async function currentSchoolId(): Promise<string | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  try {
+    const stored = (await db.get(MIRROR_STORE, "current")) as { snapshot?: { school?: { id?: unknown } } } | undefined;
+    const id = stored?.snapshot?.school?.id;
+    return typeof id === "string" ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Adds one operation to the outbox. `label` is what the user sees while it waits. */
 export async function enqueue(operation: QueuedOperation, label: string): Promise<QueuedEntry | null> {
   const db = await getDb();
   if (!db) return null;
 
-  const entry = { ...operation, id: queueId(), createdAt: Date.now(), label, attempts: 0 } as QueuedEntry;
+  const entry = {
+    ...operation,
+    id: queueId(),
+    createdAt: Date.now(),
+    label,
+    attempts: 0,
+    schoolId: await currentSchoolId(),
+  } as QueuedEntry;
   await db.put(STORE, entry);
   notifyChanged();
   void requestBackgroundSync();
@@ -94,6 +129,11 @@ export async function listQueued(): Promise<QueuedEntry[]> {
     .sort((a, b) => a.createdAt - b.createdAt);
 }
 
+/** What still has to reach the server — refused entries excluded. */
+export async function listPending(): Promise<QueuedEntry[]> {
+  return (await listQueued()).filter((e) => !e.rejectedAt);
+}
+
 export async function removeQueued(id: string) {
   const db = await getDb();
   if (!db) return;
@@ -108,24 +148,64 @@ async function markFailure(entry: QueuedEntry, error: string) {
   notifyChanged();
 }
 
+async function markRejected(entry: QueuedEntry, error: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.put(STORE, { ...entry, attempts: entry.attempts + 1, lastError: error, rejectedAt: Date.now() });
+  notifyChanged();
+}
+
+/** The student an entry is about, whatever its kind. */
+function studentIdOf(entry: QueuedEntry): string | null {
+  if (entry.kind === "payment") return entry.payload.studentId;
+  if (entry.kind === "student.update" || entry.kind === "reminder.send") return entry.studentId;
+  return null;
+}
+
+function withStudentId(entry: QueuedEntry, studentId: string): QueuedEntry {
+  if (entry.kind === "payment") return { ...entry, payload: { ...entry.payload, studentId } };
+  if (entry.kind === "student.update" || entry.kind === "reminder.send") return { ...entry, studentId };
+  return entry;
+}
+
+/**
+ * A student created offline is known on the device as `local:<entry id>`, and
+ * whatever was typed for them afterwards (a payment, a correction, a rappel)
+ * points at that id. Once the server has created them, those entries are
+ * rewritten to the real id — otherwise the server would not find the student
+ * and the payment taken for them would be refused.
+ */
+async function adoptServerId(entries: QueuedEntry[], from: number, localId: string, serverId: string) {
+  const db = await getDb();
+  for (let i = from; i < entries.length; i++) {
+    if (studentIdOf(entries[i]) !== localId) continue;
+    entries[i] = withStudentId(entries[i], serverId);
+    if (db) await db.put(STORE, entries[i]);
+  }
+}
+
 export type FlushResult = { synced: number; failed: number; pending: number; errors: string[] };
 
 let flushing = false;
 
 /**
  * Replays the outbox oldest-first. An entry the server rejects for a permanent
- * reason (duplicate matricule, deleted student…) is dropped with its message
- * kept, otherwise a single bad row would block the queue forever. A network
- * failure stops the run and leaves everything queued for the next attempt.
+ * reason (deleted class, invalid data…) is set aside — kept and shown until the
+ * user dismisses it — otherwise a single bad row would block the queue forever.
+ * A network failure stops the run and leaves everything queued for the next
+ * attempt; the server recognises an entry it already applied (the response was
+ * lost), so a retry never records the same payment twice.
  */
 export async function flushQueue(): Promise<FlushResult> {
-  if (flushing) return { synced: 0, failed: 0, pending: (await listQueued()).length, errors: [] };
+  if (flushing) return { synced: 0, failed: 0, pending: (await listPending()).length, errors: [] };
   flushing = true;
 
   const result: FlushResult = { synced: 0, failed: 0, pending: 0, errors: [] };
 
   try {
-    for (const entry of await listQueued()) {
+    const entries = await listPending();
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
       let res: Response;
       try {
         res = await fetch("/api/sync", {
@@ -142,13 +222,28 @@ export async function flushQueue(): Promise<FlushResult> {
         break;
       }
 
-      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; permanent?: boolean };
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        permanent?: boolean;
+        otherSchool?: boolean;
+        studentId?: string;
+      };
+
+      if (body.otherSchool) {
+        // Typed for another school signed in on this device earlier: it waits
+        // for that account, untouched.
+        continue;
+      }
 
       if (res.ok && body.ok) {
         await removeQueued(entry.id);
         result.synced += 1;
+        if (entry.kind === "student.create" && body.studentId) {
+          await adoptServerId(entries, i + 1, `${LOCAL_STUDENT_PREFIX}${entry.id}`, body.studentId);
+        }
       } else if (body.permanent) {
-        await removeQueued(entry.id);
+        await markRejected(entry, body.error ?? "refusé par le serveur");
         result.failed += 1;
         result.errors.push(`${entry.label} : ${body.error ?? "refusé par le serveur"}`);
       } else {
@@ -162,7 +257,7 @@ export async function flushQueue(): Promise<FlushResult> {
     flushing = false;
   }
 
-  result.pending = (await listQueued()).length;
+  result.pending = (await listPending()).length;
   notifyChanged();
   return result;
 }
@@ -204,8 +299,3 @@ export async function loadPaymentContext(studentId: string): Promise<CachedPayme
   if (!db) return null;
   return ((await db.get(CONTEXT_STORE, studentId)) as CachedPaymentContext | undefined) ?? null;
 }
-
-// Legacy names kept so older imports keep working.
-export const listQueuedPayments = listQueued;
-export const removeQueuedPayment = removeQueued;
-export const flushQueuedPayments = flushQueue;

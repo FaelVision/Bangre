@@ -290,6 +290,7 @@ function Screen({
 
     const rows: LateRow[] = late.rows.map((r) => ({
       id: r.student.id,
+      matricule: r.student.matricule,
       lastName: r.student.lastName,
       firstName: r.student.firstName,
       className: r.student.class.name,

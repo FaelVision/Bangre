@@ -160,7 +160,13 @@ export function applyPendingOperations(
     reminders: data.reminders.slice(),
   };
 
-  for (const entry of [...entries].sort((a, b) => a.createdAt - b.createdAt)) {
+  const mine = entries.filter(
+    // Refused entries never reached the server; entries typed for another
+    // school signed in on this device earlier are not this school's data.
+    (e) => !e.rejectedAt && (!e.schoolId || e.schoolId === data.school.id)
+  );
+
+  for (const entry of mine.sort((a, b) => a.createdAt - b.createdAt)) {
     switch (entry.kind) {
       case "student.create": {
         const payload = entry.payload;
