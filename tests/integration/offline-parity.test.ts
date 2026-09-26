@@ -54,7 +54,6 @@ async function buildSnapshot(id: string) {
         receiptCounter: true,
         subscriptionStatus: true,
         subscriptionRenewsAt: true,
-        trialEndsAt: true,
         blocked: true,
       },
     }),

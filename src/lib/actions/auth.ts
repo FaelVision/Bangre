@@ -76,9 +76,6 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
   }
   const passwordHash = await bcrypt.hash(secret, 10);
 
-  const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + 14);
-
   const school = await prisma.school.create({
     data: {
       name: schoolName,
@@ -90,8 +87,8 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
       email: accountEmail,
       googleId: googleLink?.googleId ?? null,
       avatarUrl: googleLink?.picture ?? null,
-      subscriptionStatus: "trial",
-      trialEndsAt,
+      // No free trial: the school pays on the next screen before using the app.
+      subscriptionStatus: "unpaid",
       academicYears: {
         create: { label: currentAcademicYearLabel(), isCurrent: true },
       },

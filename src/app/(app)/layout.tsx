@@ -1,4 +1,4 @@
-import { requireActiveSubscription, getCurrentAcademicYear, verifySession, hasCurrentSubscription } from "@/lib/dal";
+import { requireActiveSubscription, getCurrentAcademicYear, verifySession } from "@/lib/dal";
 import { getSidebarCounts } from "@/lib/queries";
 import { daysUntil, formatDate } from "@/lib/format";
 import { AppShell } from "@/components/app-shell";
@@ -22,10 +22,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .slice(0, 2)
     .toUpperCase();
 
-  // Whichever date currently governs access — the trial end date, or the paid
-  // renewal date once a subscription is active — is the one worth warning about.
-  const isActive = hasCurrentSubscription(school);
-  const expiryDate = isActive ? school.subscriptionRenewsAt : school.trialEndsAt;
+  // Only a paid subscription opens the app, so its renewal date is the one
+  // worth warning about.
+  const expiryDate = school.subscriptionRenewsAt;
   const daysLeft = expiryDate ? daysUntil(expiryDate) : null;
 
   return (
@@ -42,7 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <OfflineSync />
       </AppShell>
       {daysLeft !== null && daysLeft <= EXPIRY_ALERT_THRESHOLD_DAYS && (
-        <SubscriptionExpiryAlert daysLeft={daysLeft} isTrial={!isActive} untilLabel={formatDate(expiryDate)} />
+        <SubscriptionExpiryAlert daysLeft={daysLeft} untilLabel={formatDate(expiryDate)} />
       )}
     </PaymentModalProvider>
   );

@@ -24,7 +24,6 @@ export type MirrorSchool = {
   receiptCounter: number;
   subscriptionStatus: string;
   subscriptionRenewsAt: Date | null;
-  trialEndsAt: Date | null;
   blocked: boolean;
 };
 
@@ -76,7 +75,6 @@ export function reviveSnapshot(raw: unknown): MirrorData {
     school: {
       ...(snapshot.school as unknown as MirrorSchool),
       subscriptionRenewsAt: optionalDate(snapshot.school.subscriptionRenewsAt),
-      trialEndsAt: optionalDate(snapshot.school.trialEndsAt),
     },
     academicYear: snapshot.academicYear,
     classes: snapshot.classes.map((c) => ({

@@ -3,7 +3,7 @@ import type { SubscriptionState } from "@/lib/admin-queries";
 
 const STATES: Record<SubscriptionState, { label: string; tone: "success" | "gold" | "danger" | "neutral" }> = {
   active: { label: "Abonné", tone: "success" },
-  trial: { label: "Essai", tone: "gold" },
+  unpaid: { label: "Sans abonnement", tone: "gold" },
   expired: { label: "Expiré", tone: "neutral" },
   blocked: { label: "Bloqué", tone: "danger" },
 };

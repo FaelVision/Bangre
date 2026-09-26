@@ -48,9 +48,9 @@ export const requireActiveSubscription = cache(async () => {
     redirect("/compte-suspendu");
   }
 
-  const trialExpired = school.trialEndsAt ? school.trialEndsAt.getTime() < Date.now() : false;
-  if (!hasCurrentSubscription(school) && trialExpired) {
-    redirect("/abonnement?expire=1");
+  // No free trial: the app opens only on a paid, still-running subscription.
+  if (!hasCurrentSubscription(school)) {
+    redirect("/abonnement");
   }
   return school;
 });

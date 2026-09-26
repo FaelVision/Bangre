@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { PLANS } from "@/lib/plans";
 import { isPermanentRenewal } from "@/lib/subscription-core";
 
-export type SubscriptionState = "active" | "trial" | "expired" | "blocked";
+/** "unpaid": signed up but never paid; "expired": paid once, lapsed since. */
+export type SubscriptionState = "active" | "unpaid" | "expired" | "blocked";
 
 export type SchoolRow = {
   id: string;
@@ -18,10 +19,9 @@ export type SchoolRow = {
   blocked: boolean;
   blockedReason: string | null;
   state: SubscriptionState;
-  /** Days left on the trial, or until renewal; negative once past. */
+  /** Days until renewal; negative once past. */
   daysLeft: number | null;
   renewsAt: Date | null;
-  trialEndsAt: Date | null;
   permanent: boolean;
   counts: { classes: number; students: number; payments: number };
   paidTotal: number;
@@ -35,20 +35,18 @@ function daysFromNow(date: Date | null, now: Date) {
   return Math.ceil((date.getTime() - now.getTime()) / DAY);
 }
 
-/** How the platform sees a school: blocked wins, then paid, then trial. */
+/** How the platform sees a school: blocked wins, then paid. There is no free trial. */
 export function subscriptionState(school: {
   blocked: boolean;
   subscriptionStatus: string;
   subscriptionRenewsAt: Date | null;
-  trialEndsAt: Date | null;
 }, now: Date): SubscriptionState {
   if (school.blocked) return "blocked";
   if (school.subscriptionStatus === "active") {
     const stillValid = !school.subscriptionRenewsAt || school.subscriptionRenewsAt.getTime() > now.getTime();
     return stillValid ? "active" : "expired";
   }
-  if (school.trialEndsAt && school.trialEndsAt.getTime() > now.getTime()) return "trial";
-  return "expired";
+  return school.subscriptionRenewsAt ? "expired" : "unpaid";
 }
 
 export const getAdminOverview = cache(async () => {
@@ -64,7 +62,6 @@ export const getAdminOverview = cache(async () => {
 
   const rows: SchoolRow[] = schools.map((s) => {
     const state = subscriptionState(s, now);
-    const reference = state === "active" ? s.subscriptionRenewsAt : s.trialEndsAt;
     return {
       id: s.id,
       name: s.name,
@@ -77,9 +74,8 @@ export const getAdminOverview = cache(async () => {
       blocked: s.blocked,
       blockedReason: s.blockedReason,
       state,
-      daysLeft: daysFromNow(reference, now),
+      daysLeft: daysFromNow(s.subscriptionRenewsAt, now),
       renewsAt: s.subscriptionRenewsAt,
-      trialEndsAt: s.trialEndsAt,
       permanent: state === "active" && isPermanentRenewal(s.subscriptionRenewsAt),
       counts: { classes: s._count.classes, students: s._count.students, payments: s._count.payments },
       paidTotal: s.subscriptionPayments.reduce((sum, p) => sum + p.amount, 0),
@@ -106,15 +102,16 @@ export const getAdminOverview = cache(async () => {
     stats: {
       total: rows.length,
       active: byState("active"),
-      trial: byState("trial"),
+      unpaid: byState("unpaid"),
       expired: byState("expired"),
       blocked: byState("blocked"),
       students: rows.reduce((s, r) => s + r.counts.students, 0),
       revenue: rows.reduce((s, r) => s + r.paidTotal, 0),
       mrr,
       openErrors,
-      /** Trials ending within a week — the ones worth a call. */
-      endingSoon: rows.filter((r) => r.state === "trial" && r.daysLeft !== null && r.daysLeft <= 7).length,
+      /** Subscriptions ending within a week — the ones worth a call. */
+      endingSoon: rows.filter((r) => r.state === "active" && !r.permanent && r.daysLeft !== null && r.daysLeft <= 7)
+        .length,
     },
   };
 });
@@ -160,10 +157,7 @@ export const getSchoolDetail = cache(async (schoolId: string) => {
   });
   if (!school) return null;
 
-  return { school, state: subscriptionState(school, now), daysLeft: daysFromNow(
-    subscriptionState(school, now) === "active" ? school.subscriptionRenewsAt : school.trialEndsAt,
-    now
-  ) };
+  return { school, state: subscriptionState(school, now), daysLeft: daysFromNow(school.subscriptionRenewsAt, now) };
 });
 
 export const getErrorLogs = cache(async (filter: "open" | "resolved" | "all" = "open") => {

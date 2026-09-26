@@ -33,7 +33,6 @@ export async function GET(req: NextRequest) {
       receiptCounter: true,
       subscriptionStatus: true,
       subscriptionRenewsAt: true,
-      trialEndsAt: true,
       blocked: true,
     },
   });

@@ -34,7 +34,6 @@ function snapshotJson() {
       receiptCounter: 12,
       subscriptionStatus: "active",
       subscriptionRenewsAt: "2026-12-31T00:00:00.000Z",
-      trialEndsAt: null,
       blocked: false,
     },
     academicYear: { id: "year-1", label: "2025-2026" },

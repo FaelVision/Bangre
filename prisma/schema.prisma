@@ -31,7 +31,10 @@ model School {
   googleId              String?   @unique
   avatarUrl             String?
 
-  subscriptionStatus    String    @default("trial") // trial | active | expired
+  // unpaid | active. There is no free trial any more: only "active" with a
+  // renewal date still ahead opens the app. "trial" rows and trialEndsAt are
+  // what the former 14-day trial left behind, kept so no migration is needed.
+  subscriptionStatus    String    @default("trial")
   trialEndsAt           DateTime?
   subscriptionRenewsAt  DateTime?
 

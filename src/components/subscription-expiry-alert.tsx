@@ -11,11 +11,9 @@ const DISMISS_KEY = "bangre-subscription-alert-dismissed-days";
 
 export function SubscriptionExpiryAlert({
   daysLeft,
-  isTrial,
   untilLabel,
 }: {
   daysLeft: number;
-  isTrial: boolean;
   untilLabel: string;
 }) {
   const [visible, setVisible] = useState(false);
@@ -42,7 +40,6 @@ export function SubscriptionExpiryAlert({
   if (!visible) return null;
 
   const urgent = daysLeft <= 2;
-  const subject = isTrial ? "Votre essai" : "Votre abonnement";
 
   return (
     <div className="fixed inset-0 bg-[#281C14]/42 flex items-center justify-center p-4 z-[60]">
@@ -54,15 +51,15 @@ export function SubscriptionExpiryAlert({
               : "bg-(--color-gold-chip-bg) text-(--color-gold-text)"
           }`}
         >
-          {isTrial ? "Fin d'essai proche" : "Renouvellement proche"}
+          Renouvellement proche
         </span>
         <div className="text-[18px] font-semibold tracking-tight mt-3">
           {daysLeft === 0
-            ? `${subject} se termine aujourd'hui`
-            : `${subject} se termine dans ${daysLeft} jour${daysLeft > 1 ? "s" : ""}`}
+            ? "Votre abonnement se termine aujourd'hui"
+            : `Votre abonnement se termine dans ${daysLeft} jour${daysLeft > 1 ? "s" : ""}`}
         </div>
         <div className="text-[13.5px] text-(--color-text-muted) mt-2 leading-relaxed">
-          {isTrial ? "Fin d'essai" : "Renouvellement"} le {untilLabel}. Passé cette date, l&apos;accès à Bangré sera
+          Renouvellement le {untilLabel}. Passé cette date, l&apos;accès à Bangré sera
           bloqué jusqu&apos;au paiement.
         </div>
         <div className="flex gap-2.5 mt-4.5">

@@ -19,7 +19,7 @@ import { StateBadge } from "./state-badge";
 const FILTERS = [
   { key: "", label: "Tous" },
   { key: "active", label: "Abonnés" },
-  { key: "trial", label: "En essai" },
+  { key: "unpaid", label: "Sans abonnement" },
   { key: "expired", label: "Expirés" },
   { key: "blocked", label: "Bloqués" },
 ] as const;
@@ -53,14 +53,14 @@ export default async function AdminHomePage({
         <Stat
           label="Abonnements actifs"
           value={String(stats.active)}
-          hint={`≈ ${formatAmount(stats.mrr)} CFA / mois`}
+          hint={`≈ ${formatAmount(stats.mrr)} CFA / mois${stats.endingSoon > 0 ? ` · ${stats.endingSoon} à renouveler sous 7 j` : ""}`}
           tone="success"
         />
         <Stat
-          label="En période d'essai"
-          value={String(stats.trial)}
-          hint={stats.endingSoon > 0 ? `${stats.endingSoon} se termine(nt) sous 7 j` : "aucune échéance proche"}
-          tone={stats.endingSoon > 0 ? "gold" : undefined}
+          label="Inscrits sans abonnement"
+          value={String(stats.unpaid)}
+          hint="n'ont encore jamais payé"
+          tone={stats.unpaid > 0 ? "gold" : undefined}
         />
         <Stat
           label="Expirés ou bloqués"
@@ -170,8 +170,7 @@ export default async function AdminHomePage({
 }
 
 function SchoolLine({ row, zebra }: { row: SchoolRow; zebra: boolean }) {
-  const deadline =
-    row.state === "active" ? row.renewsAt : row.state === "trial" || row.state === "expired" ? row.trialEndsAt : null;
+  const deadline = row.state === "active" || row.state === "expired" ? row.renewsAt : null;
 
   return (
     <tr className="border-t border-(--color-border-row)" style={{ background: zebra ? "var(--color-bg-zebra)" : undefined }}>

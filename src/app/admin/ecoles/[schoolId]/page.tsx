@@ -53,11 +53,8 @@ export default async function AdminSchoolPage({ params }: { params: Promise<{ sc
           <Card>
             <div className="text-[15px] font-semibold">Abonnement</div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5">
-              <Info label="État" value={state === "active" ? "Abonné" : state === "trial" ? "Essai" : state === "blocked" ? "Bloqué" : "Expiré"} />
-              <Info
-                label={state === "active" ? "Renouvellement" : "Fin d'essai"}
-                value={formatDate(state === "active" ? school.subscriptionRenewsAt : school.trialEndsAt)}
-              />
+              <Info label="État" value={state === "active" ? "Abonné" : state === "unpaid" ? "Sans abonnement" : state === "blocked" ? "Bloqué" : "Expiré"} />
+              <Info label={state === "active" ? "Renouvellement" : "Fin d'abonnement"} value={formatDate(school.subscriptionRenewsAt)} />
               <Info
                 label="Échéance"
                 value={daysLeft === null ? "—" : daysLeft < 0 ? `dépassée de ${-daysLeft} j` : `dans ${daysLeft} j`}
