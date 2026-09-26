@@ -68,7 +68,7 @@ export function AppShell({
           <span className="block w-[15px] h-[1.5px] bg-(--color-text)" />
           <span className="block w-[15px] h-[1.5px] bg-(--color-text)" />
         </button>
-        <Image src="/logo-bangre.jpg" alt="" width={30} height={30} className="rounded-full object-cover shrink-0" />
+        <Image src="/logo-bangre-carre.png" alt="" width={30} height={30} className="rounded-full shrink-0" />
         <div className="min-w-0">
           <div className="text-[14.5px] font-semibold tracking-tight leading-tight">Bangré</div>
           <div className="text-[11px] text-(--color-text-muted) truncate">

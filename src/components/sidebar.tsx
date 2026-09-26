@@ -62,7 +62,7 @@ export function Sidebar({
       )}
     >
       <div className="flex items-center gap-2.5 px-2 pb-4.5">
-        <Image src="/logo-bangre.jpg" alt="Bangré" width={38} height={38} className="rounded-full object-cover shrink-0" />
+        <Image src="/logo-bangre-carre.png" alt="Bangré" width={38} height={38} className="rounded-full shrink-0" />
         <div className="min-w-0">
           <div className="text-[16.5px] font-semibold tracking-tight leading-tight">Bangré</div>
           <div className="text-[11.5px] text-(--color-text-muted) mt-0.5">

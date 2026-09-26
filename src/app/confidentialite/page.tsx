@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export const metadata = {
@@ -25,8 +26,12 @@ export default function ConfidentialitePage() {
   return (
     <div className="min-h-screen bg-(--color-bg-page) flex justify-center px-5 py-12">
       <div className="w-full max-w-[680px]">
-        <Link href="/" className="text-[13px] font-semibold text-(--color-primary) no-underline hover:underline">
-          ← Bangré
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 text-[13px] font-semibold text-(--color-primary) no-underline hover:underline"
+        >
+          <Image src="/logo-bangre-carre.png" alt="" width={28} height={28} className="rounded-full" />
+          Bangré
         </Link>
 
         <h1 className="text-[26px] font-semibold tracking-tight mt-4">Politique de confidentialité</h1>

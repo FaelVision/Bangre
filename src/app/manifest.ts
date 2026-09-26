@@ -8,7 +8,8 @@ import type { MetadataRoute } from "next";
  * data is on the device.
  *
  * Chrome and Edge only offer installation with raster icons of 192 and 512 px
- * (`public/icon-*.png`, rendered from `src/app/icon.svg`).
+ * (`public/icon-*.png`, cut from the emblem of `public/logo-bangre.jpg`); the
+ * maskable one pads the emblem into the safe zone the platform may round off.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -26,9 +27,7 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
+      { src: "/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

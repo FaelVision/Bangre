@@ -1,5 +1,5 @@
 /* Bangré offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v10";
+const CACHE_VERSION = "v11";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 
@@ -11,7 +11,13 @@ const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 const SHELL_URL = "/hors-ligne";
 
 /** Files outside `/_next/static` the offline app shows: the logo and the app icons. */
-const EXTRA_ASSETS = ["/logo-bangre.jpg", "/icon-192.png", "/icon-512.png", "/icon.svg", "/manifest.webmanifest"];
+const EXTRA_ASSETS = [
+  "/logo-bangre-carre.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/manifest.webmanifest",
+];
 
 const STATIC_ASSET_RE = /\.(?:js|css|woff2?|png|jpg|jpeg|svg|ico|webp)$/;
 // Never serve a stale answer for these — money, sessions and admin actions.
@@ -106,7 +112,7 @@ function prepareOffline() {
     }
 
     // Required = the shell's own scripts and stylesheets, and the logo.
-    const required = [...staticRefs(html)].filter((u) => /\.(?:js|css)$/.test(u)).concat("/logo-bangre.jpg");
+    const required = [...staticRefs(html)].filter((u) => /\.(?:js|css)$/.test(u)).concat("/logo-bangre-carre.png");
     const missing = required.filter((u) => failed.includes(u));
     // A shell with no script found in it cannot be the real one (or the pattern
     // above no longer matches how Next names its files): never call that ready.

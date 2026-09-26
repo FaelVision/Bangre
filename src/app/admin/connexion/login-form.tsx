@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useActionState } from "react";
 import { adminLoginAction } from "@/lib/actions/admin";
 import { Field, Label, TextInput } from "@/components/form";
@@ -12,9 +13,7 @@ export function AdminLoginForm({ hasAdmin }: { hasAdmin: boolean }) {
     <div className="min-h-screen bg-[#12100E] text-[#F7EFE4] flex items-center justify-center px-5 py-12">
       <div className="w-full max-w-[400px]">
         <div className="flex items-center gap-2.5">
-          <span className="w-8 h-8 rounded-lg bg-(--color-primary) text-white flex items-center justify-center text-sm font-bold">
-            B
-          </span>
+          <Image src="/logo-bangre-carre.png" alt="" width={36} height={36} className="rounded-full shrink-0" />
           <div className="text-[17px] font-semibold tracking-tight">Bangré · Administration</div>
         </div>
 

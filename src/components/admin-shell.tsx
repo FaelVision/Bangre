@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { adminLogoutAction } from "@/lib/actions/admin";
 import { cn } from "@/lib/cn";
@@ -24,9 +25,7 @@ export function AdminShell({
       <div className="bg-[#12100E] text-[#F7EFE4]">
         <div className="max-w-[1180px] mx-auto px-4 lg:px-7">
           <div className="flex items-center gap-3 h-14">
-            <span className="w-7 h-7 rounded-lg bg-(--color-primary) text-white flex items-center justify-center text-[13px] font-bold shrink-0">
-              B
-            </span>
+            <Image src="/logo-bangre-carre.png" alt="" width={30} height={30} className="rounded-full shrink-0" />
             <div className="text-[14.5px] font-semibold tracking-tight">Bangré · Administration</div>
             <div className="flex-1" />
             <span className="text-[12.5px] text-[#F7EFE4]/55 hidden sm:inline truncate max-w-[160px]">{adminName}</span>

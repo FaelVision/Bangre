@@ -8,14 +8,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <div>
             <div className="flex items-center gap-3">
               <Image
-                src="/logo-bangre.jpg"
+                src="/logo-bangre-carre.png"
                 alt="Bangré"
                 width={52}
                 height={52}
                 priority
-                // The source is 1024×559: without `shrink-0` the flex row
-                // narrows the box while the height stays 52px, squashing it.
-                className="rounded-full object-cover bg-white shrink-0"
+                className="rounded-full shrink-0"
               />
               <div className="text-[21px] font-semibold tracking-tight">Bangré</div>
             </div>
@@ -47,7 +45,14 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
 
         <div className="flex-1 flex items-center justify-center px-5 sm:px-10 py-10 sm:py-12">
-          <div className="w-full max-w-[452px]">{children}</div>
+          <div className="w-full max-w-[452px]">
+            {/* The green panel is hidden on phones: the brand goes above the form there. */}
+            <div className="md:hidden flex items-center gap-2.5 mb-8">
+              <Image src="/logo-bangre-carre.png" alt="" width={40} height={40} priority className="rounded-full shrink-0" />
+              <div className="text-[18px] font-semibold tracking-tight">Bangré</div>
+            </div>
+            {children}
+          </div>
         </div>
       </div>
     </div>
