@@ -1,5 +1,5 @@
 /* Bangre offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v8";
+const CACHE_VERSION = "v9";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 
@@ -25,8 +25,13 @@ const AUTH_PAGES_RE = /^\/(connexion|inscription|mot-de-passe-oublie|reinitialis
  * at hydration from paths written inside the page's data (escaped JSON), and
  * the runtime itself names further chunks — reading only `src="…"` missed
  * those, and the screens relying on them broke offline.
+ *
+ * On Vercel the files live one level deeper, under `static/immutable/…`
+ * (locally: `static/chunks/…`). Matching only the local layout found nothing
+ * at all in production: the offline app was cached without its scripts and
+ * stayed on "Chargement…" forever — while the sidebar said it was ready.
  */
-const STATIC_REF_RE = /(?:\/_next\/)?static\/(?:chunks|css|media)\/[A-Za-z0-9_\-.~%/]+?\.(?:js|css|woff2?|ttf|otf|png|jpe?g|svg|webp|ico)/g;
+const STATIC_REF_RE = /(?:\/_next\/)?static\/(?:[A-Za-z0-9_-]+\/)?(?:chunks|css|media)\/[A-Za-z0-9_\-.~%/]+?\.(?:js|css|woff2?|ttf|otf|png|jpe?g|svg|webp|ico)/g;
 
 function staticRefs(text) {
   const out = new Set();
@@ -93,7 +98,7 @@ function prepareOffline() {
             } catch {
               // A chunk named in a comment or a stale path can 404: only the
               // files the shell itself lists are required.
-              if (!url.startsWith("/_next/static/media/")) failed.push(url);
+              if (!/^\/_next\/static\/(?:[A-Za-z0-9_-]+\/)?media\//.test(url)) failed.push(url);
             }
           })
       );
@@ -103,6 +108,10 @@ function prepareOffline() {
     // Required = the shell's own scripts and stylesheets, and the logo.
     const required = [...staticRefs(html)].filter((u) => /\.(?:js|css)$/.test(u)).concat("/logo-bangre.jpg");
     const missing = required.filter((u) => failed.includes(u));
+    // A shell with no script found in it cannot be the real one (or the pattern
+    // above no longer matches how Next names its files): never call that ready.
+    const scripts = required.filter((u) => u.endsWith(".js"));
+    if (scripts.length === 0) return { ok: false, cached, failed: ["scripts de l'application introuvables"] };
     return { ok: missing.length === 0, cached, failed: missing };
   })().finally(() => {
     preparing = null;
