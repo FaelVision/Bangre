@@ -159,14 +159,13 @@ export function ClassesView({
                   >
                     Élèves
                   </Link>
-                  {!offline && (
-                    <Link
-                      href={`/classes/${c.id}/configuration`}
-                      className="flex-1 h-9 rounded-[9px] border border-(--color-border-strong) bg-(--color-bg-subtle) flex items-center justify-center text-[13px] font-semibold no-underline hover:no-underline"
-                    >
-                      Configurer
-                    </Link>
-                  )}
+                  <Link
+                    href={`/classes/${c.id}/configuration`}
+                    className="flex-1 h-9 rounded-[9px] border border-(--color-border-strong) bg-(--color-bg-subtle) flex items-center justify-center text-[13px] font-semibold no-underline hover:no-underline"
+                  >
+                    {/* Offline the configuration can be read, not changed. */}
+                    {offline ? "Configuration" : "Configurer"}
+                  </Link>
                 </div>
               </Card>
             );

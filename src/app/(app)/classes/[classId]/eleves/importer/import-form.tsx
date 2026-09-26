@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { importStudentsCsvAction } from "@/lib/actions/students";
+import { importStudentsCsvAction, type ImportActionState } from "@/lib/actions/students";
+import { queueImport } from "@/lib/offline-import";
+import { isRedirectSignal } from "@/lib/offline-forms";
 import {
   FIELD_LABELS,
   parseStudentsFile,
@@ -30,9 +32,40 @@ async function readFile(file: File): Promise<ParsedImport> {
   return parseStudentsFile(await file.text());
 }
 
-export function ImportForm({ classId, className }: { classId: string; className: string }) {
-  const boundAction = importStudentsCsvAction.bind(null, classId);
-  const [state, formAction, pending] = useActionState(boundAction, undefined);
+type ImportState = (ImportActionState & { queued?: boolean }) | undefined;
+
+export function ImportForm({
+  classId,
+  className,
+  onNavigate,
+}: {
+  classId: string;
+  className: string;
+  /** Set by the offline app, which moves between screens itself. */
+  onNavigate?: (href: string) => void;
+}) {
+  // What the preview recognised, read at submit time: offline, the import is
+  // made from it on the device instead of by the server.
+  const rowsRef = useRef<ParsedImport["rows"]>([]);
+
+  async function submit(previous: ImportState, formData: FormData): Promise<ImportState> {
+    const importLocally = async (): Promise<ImportState> => {
+      if (rowsRef.current.length === 0) return { error: "Aucun élève n'a été trouvé dans ce fichier." };
+      const res = await queueImport(classId, rowsRef.current);
+      if (res.imported > 0 && res.skipped.length === 0) onNavigate?.(`/classes/${classId}/eleves`);
+      return res;
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) return importLocally();
+    try {
+      return await importStudentsCsvAction(classId, previous, formData);
+    } catch (err) {
+      if (isRedirectSignal(err)) throw err;
+      return importLocally(); // the network went away mid-import
+    }
+  }
+
+  const [state, formAction, pending] = useActionState(submit, undefined);
   // The file is read here too, so the secretary sees what was recognised — and
   // can correct it — before importing anything. The server reads it again and
   // applies the same mapping.
@@ -93,6 +126,10 @@ export function ImportForm({ classId, className }: { classId: string; className:
     const columns = columnsFromMapping(mapping, preview.headers);
     return { columns, rows: rowsFromColumns(preview.dataGrid, columns) };
   }, [preview, mapping]);
+
+  useEffect(() => {
+    rowsRef.current = effective.rows;
+  }, [effective.rows]);
 
   const chosen = new Set(Object.values(mapping).filter(Boolean));
   const hasNames = chosen.has("lastName") || chosen.has("fullName");
@@ -251,10 +288,17 @@ export function ImportForm({ classId, className }: { classId: string; className:
           )}
 
           {state?.error && <div className="text-[13px] text-(--color-danger-text)">{state.error}</div>}
+          {state?.queued && (
+            <div className="rounded-lg border border-(--color-gold-border) bg-(--color-gold-bg) text-(--color-gold-text) text-[12.5px] px-3.5 py-2.5 leading-relaxed">
+              Hors ligne : {state.imported} élève(s) ajouté(s) sur cet appareil. Ils apparaissent déjà dans la classe
+              et seront créés sur le serveur au retour du réseau.
+            </div>
+          )}
           {state?.skipped && (
             <div className="text-[13px] text-(--color-text-secondary)">
               <div className="font-semibold">
-                {state.imported} élève(s) importé(s), {state.skipped.length} ligne(s) ignorée(s) :
+                {state.imported} élève(s) {state.queued ? "ajouté(s) hors ligne" : "importé(s)"}, {state.skipped.length}{" "}
+                ligne(s) ignorée(s) :
               </div>
               <ul className="list-disc pl-5 mt-1 text-(--color-text-muted)">
                 {state.skipped.slice(0, 5).map((reason) => (
@@ -270,7 +314,7 @@ export function ImportForm({ classId, className }: { classId: string; className:
               href={`/classes/${classId}/eleves`}
               className="flex-1 h-[42px] rounded-[9px] border border-(--color-border-strong) bg-white flex items-center justify-center text-[13.5px] font-semibold no-underline hover:no-underline"
             >
-              {state?.skipped ? "Terminer" : "Annuler"}
+              {state?.skipped || state?.queued ? "Terminer" : "Annuler"}
             </Link>
             <Button
               type="submit"

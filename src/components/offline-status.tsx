@@ -4,6 +4,24 @@ import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { currentSchoolId, listQueued, removeQueued, QUEUE_CHANGED, type QueuedEntry } from "@/lib/offline-queue";
 import { MIRROR_CHANGED, refreshIfStale, snapshotAge, syncAll } from "@/lib/offline-mirror";
+import {
+  getReadiness,
+  prepareOfflineDevice,
+  READINESS_CHANGED,
+  type OfflineReadiness,
+} from "@/lib/offline-ready";
+
+const UNKNOWN_READINESS: OfflineReadiness = { state: "unknown", readyAt: null };
+
+function subscribeToReadiness(callback: () => void) {
+  window.addEventListener(READINESS_CHANGED, callback);
+  return () => window.removeEventListener(READINESS_CHANGED, callback);
+}
+
+/** Whether this device holds everything needed to work with no network. */
+export function useOfflineReadiness() {
+  return useSyncExternalStore(subscribeToReadiness, getReadiness, () => UNKNOWN_READINESS);
+}
 
 function subscribeToConnectivity(callback: () => void) {
   window.addEventListener("online", callback);
@@ -227,6 +245,8 @@ export function OfflineStatusCard() {
             : "Vous pouvez continuer à travailler : tout sera envoyé au retour du réseau."}
       </div>
 
+      <ReadinessLine online={online} />
+
       {/* The other half of working offline: what this device holds locally. */}
       <div className="text-[11.5px] text-(--color-text-muted) mt-1.5 leading-snug">
         {age === undefined
@@ -292,6 +312,49 @@ export function OfflineStatusCard() {
       </button>
 
       {report && <div className="text-[11.5px] text-(--color-text-secondary) mt-2 leading-snug">{report}</div>}
+    </div>
+  );
+}
+
+/**
+ * "Prêt hors ligne" — the application's files and the school's data are both
+ * on this device. Anything short of that is said, with a way to finish it.
+ */
+function ReadinessLine({ online }: { online: boolean }) {
+  const readiness = useOfflineReadiness();
+
+  if (readiness.state === "preparing") {
+    return (
+      <div className="text-[11.5px] text-(--color-text-secondary) mt-1.5 leading-snug">
+        Préparation du mode hors ligne : téléchargement de l&apos;application et des données…
+      </div>
+    );
+  }
+
+  if (readiness.state === "ready") {
+    return (
+      <div className="text-[11.5px] font-semibold text-(--color-success-text) mt-1.5 leading-snug">
+        ✓ Prêt à fonctionner hors ligne
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5">
+      <div className="text-[11.5px] text-(--color-danger-text) leading-snug">
+        {readiness.state === "incomplete"
+          ? `Mode hors ligne incomplet. ${readiness.detail ?? ""}`
+          : "Mode hors ligne pas encore préparé sur cet appareil."}
+      </div>
+      {online && (
+        <button
+          type="button"
+          onClick={() => void prepareOfflineDevice()}
+          className="text-[11.5px] font-semibold text-(--color-primary) mt-1 cursor-pointer"
+        >
+          Préparer maintenant
+        </button>
+      )}
     </div>
   );
 }

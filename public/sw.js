@@ -1,105 +1,119 @@
 /* Bangre offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v6";
+const CACHE_VERSION = "v7";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 
 /**
  * The offline application. It renders any screen from the copy of the school
- * kept in IndexedDB, so it is served for pages this device has never opened —
- * that is what makes the whole app usable without a network, not just the
- * pages already visited.
+ * kept in IndexedDB, so it is served for every app page asked for without a
+ * network — including pages this device has never opened.
  */
 const SHELL_URL = "/hors-ligne";
 
-/** Screens the shell knows how to draw from local data. */
-const SHELL_ROUTES = [
-  /^\/$/,
-  /^\/hors-ligne$/,
-  /^\/tableau-de-bord$/,
-  /^\/classes$/,
-  /^\/classes\/[^/]+\/eleves$/,
-  /^\/eleves$/,
-  /^\/eleves\/nouveau$/,
-  /^\/eleves\/[^/]+$/,
-  /^\/eleves\/[^/]+\/modifier$/,
-  /^\/retards$/,
-  /^\/paiements$/,
-];
+/** Files outside `/_next/static` the offline app shows: the logo and the app icons. */
+const EXTRA_ASSETS = ["/logo-bangre.jpg", "/icon-192.png", "/icon-512.png", "/icon.svg", "/manifest.webmanifest"];
 
 const STATIC_ASSET_RE = /\.(?:js|css|woff2?|png|jpg|jpeg|svg|ico|webp)$/;
 // Never serve a stale answer for these — money, sessions and admin actions.
-const NEVER_CACHE_RE = /^\/(api|admin|connexion|inscription)(\/|$)/;
-
-function isShellRoute(pathname) {
-  const path = pathname.replace(/\/+$/, "") || "/";
-  return SHELL_ROUTES.some((re) => re.test(path));
-}
+const NEVER_CACHE_RE = /^\/(api|admin)(\/|$)/;
+// Screens that only exist for signed-out visitors: the offline app has nothing to show there.
+const AUTH_PAGES_RE = /^\/(connexion|inscription|mot-de-passe-oublie|reinitialiser-mot-de-passe)(\/|$)/;
 
 /**
- * Downloads the shell and everything it needs to boot with no server: its
- * scripts and stylesheets, and the fonts those stylesheets point at. Without
- * this the document would come out of the cache and then sit there, unable to
- * fetch its own JavaScript.
+ * Every `/_next/static/…` file a document or a script mentions. Next lists the
+ * scripts of the page in `<script src>`, but the client components are loaded
+ * at hydration from paths written inside the page's data (escaped JSON), and
+ * the runtime itself names further chunks — reading only `src="…"` missed
+ * those, and the screens relying on them broke offline.
  */
-async function precacheShell() {
-  const pages = await caches.open(PAGES_CACHE);
-  const assets = await caches.open(ASSETS_CACHE);
+const STATIC_REF_RE = /(?:\/_next\/)?static\/(?:chunks|css|media)\/[A-Za-z0-9_\-.~%/]+?\.(?:js|css|woff2?|ttf|otf|png|jpe?g|svg|webp|ico)/g;
 
-  let html;
-  try {
-    const res = await fetch(SHELL_URL, { credentials: "same-origin", cache: "no-cache" });
-    // A redirect means the server answered something else (a login page);
-    // caching it under /hors-ligne would poison the offline entry point.
-    if (!res.ok || res.redirected) return;
-    html = await res.clone().text();
-    await pages.put(SHELL_URL, res);
-  } catch {
-    return; // no network at install time; the next activation tries again
+function staticRefs(text) {
+  const out = new Set();
+  for (const match of text.matchAll(STATIC_REF_RE)) {
+    const ref = match[0];
+    out.add(ref.startsWith("/_next/") ? ref : `/_next/${ref}`);
   }
+  return out;
+}
 
-  // The installed app's own icons, so it looks right when opened offline.
-  const urls = new Set(["/icon-192.png", "/icon-512.png", "/icon.svg"]);
-  for (const match of html.matchAll(/(?:src|href)="(\/_next\/static\/[^"]+)"/g)) {
-    urls.add(match[1].replace(/&amp;/g, "&"));
-  }
+async function fetchAndCache(cache, url) {
+  const res = await fetch(url, { credentials: "same-origin", cache: "no-cache" });
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
+  await cache.put(url, res.clone());
+  return res;
+}
 
-  // Fonts are referenced from inside the stylesheets, never from the HTML, so
-  // the stylesheets are read as they are cached and their urls collected.
-  const fonts = new Set();
-  await Promise.all(
-    [...urls].map(async (url) => {
-      try {
-        const res = await fetch(url, { credentials: "same-origin" });
-        if (!res.ok) return;
-        if (url.endsWith(".css")) {
-          const css = await res.clone().text();
-          for (const match of css.matchAll(/url\((\/_next\/static\/media\/[^)"']+)\)/g)) {
-            fonts.add(match[1]);
-          }
-        }
-        await assets.put(url, res);
-      } catch {
-        /* one missing asset must not abort the whole install */
-      }
-    })
-  );
+let preparing = null;
 
-  await Promise.all(
-    [...fonts].map(async (url) => {
-      try {
-        const res = await fetch(url, { credentials: "same-origin" });
-        if (res.ok) await assets.put(url, res);
-      } catch {
-        /* ignore */
-      }
-    })
-  );
+/**
+ * Downloads everything the offline app needs to start and run with no
+ * server: the shell document, every script, stylesheet and font it uses —
+ * followed transitively through the files themselves — the logo and icons.
+ * Returns what was stored and what failed, so the app can tell the user
+ * whether this device is really ready to work offline.
+ */
+function prepareOffline() {
+  if (preparing) return preparing;
+  preparing = (async () => {
+    const pages = await caches.open(PAGES_CACHE);
+    const assets = await caches.open(ASSETS_CACHE);
+    const failed = [];
+
+    let html;
+    try {
+      const res = await fetch(SHELL_URL, { credentials: "same-origin", cache: "no-cache" });
+      // A redirect means the server answered something else (a login page);
+      // caching it under /hors-ligne would poison the offline entry point.
+      if (!res.ok || res.redirected) return { ok: false, cached: 0, failed: [SHELL_URL] };
+      html = await res.clone().text();
+      await pages.put(SHELL_URL, res);
+    } catch {
+      return { ok: false, cached: 0, failed: [SHELL_URL] }; // no network right now
+    }
+
+    const seen = new Set();
+    let queue = [...staticRefs(html), ...EXTRA_ASSETS];
+    let cached = 0;
+
+    // Breadth-first through the files: a script names the chunks it loads, a
+    // stylesheet the fonts it uses. Bounded, in case a pattern ever loops.
+    for (let round = 0; round < 6 && queue.length > 0; round++) {
+      const next = [];
+      await Promise.all(
+        queue
+          .filter((url) => !seen.has(url) && seen.add(url))
+          .map(async (url) => {
+            try {
+              const res = await fetchAndCache(assets, url);
+              cached += 1;
+              if (/\.(?:js|css)$/.test(url)) {
+                for (const ref of staticRefs(await res.text())) if (!seen.has(ref)) next.push(ref);
+              }
+            } catch {
+              // A chunk named in a comment or a stale path can 404: only the
+              // files the shell itself lists are required.
+              if (!url.startsWith("/_next/static/media/")) failed.push(url);
+            }
+          })
+      );
+      queue = next;
+    }
+
+    // Required = the shell's own scripts and stylesheets, and the logo.
+    const required = [...staticRefs(html)].filter((u) => /\.(?:js|css)$/.test(u)).concat("/logo-bangre.jpg");
+    const missing = required.filter((u) => failed.includes(u));
+    return { ok: missing.length === 0, cached, failed: missing };
+  })().finally(() => {
+    preparing = null;
+  });
+  return preparing;
 }
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
-      await precacheShell();
+      await prepareOffline();
       await self.skipWaiting();
     })()
   );
@@ -113,68 +127,86 @@ self.addEventListener("activate", (event) => {
         keys.filter((k) => k !== PAGES_CACHE && k !== ASSETS_CACHE).map((k) => caches.delete(k))
       );
       await self.clients.claim();
-      // A new deployment ships new asset hashes: re-take the shell so the
-      // offline copy matches what is now served.
-      await precacheShell();
     })()
   );
 });
 
 self.addEventListener("message", (event) => {
   if (event.data === "skip-waiting") self.skipWaiting();
-  if (event.data === "bangre:refresh-shell") event.waitUntil(precacheShell());
+  // The app asks for the full download after signing in and on each visit;
+  // the answer goes back on the port it sent, if any.
+  if (event.data === "bangre:refresh-shell" || event.data?.type === "bangre:prepare-offline") {
+    const port = event.ports?.[0];
+    event.waitUntil(
+      prepareOffline().then(
+        (result) => port?.postMessage(result),
+        () => port?.postMessage({ ok: false, cached: 0, failed: ["?"] })
+      )
+    );
+  }
 });
 
 /**
- * Network-first for pages: the secretary must see live figures whenever there
- * is a connection. Without one, the offline shell takes over for every screen
- * it can draw from the device copy, and the last good HTML is the fallback for
- * the rest (class configuration, import, passage d'année…).
- */
-/**
- * How long a page may take before the device copy takes over. A school wifi
+ * How long a request may take before the device copy takes over. A school wifi
  * that is up with no internet behind it does not fail a request — it lets it
- * hang for a minute or more. The request keeps running in the background, so a
- * slow answer still refreshes the cache for next time.
+ * hang for a minute or more.
  */
 const NAVIGATION_TIMEOUT_MS = 6000;
 
-async function handleNavigation(request) {
-  const cache = await caches.open(PAGES_CACHE);
-  const url = new URL(request.url);
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
+}
 
-  const network = fetch(request).then((res) => {
-    // A redirect means "sign in again" — caching it under the requested URL
-    // would serve the login page for the dashboard once offline.
-    if (res.ok && !res.redirected) cache.put(request, res.clone());
-    return res;
-  });
+/**
+ * Network-first for pages: the secretary must see live figures whenever there
+ * is a connection. Without one, the offline app answers for every page of the
+ * app — never an old copy of a server page, whose data is stale and whose
+ * scripts may no longer exist.
+ */
+async function handleNavigation(request) {
+  const url = new URL(request.url);
+  const network = fetch(request);
   network.catch(() => {});
 
   try {
-    return await Promise.race([
-      network,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), NAVIGATION_TIMEOUT_MS)),
-    ]);
+    return await withTimeout(network, NAVIGATION_TIMEOUT_MS);
   } catch {
+    const cache = await caches.open(PAGES_CACHE);
     const shell = await cache.match(SHELL_URL);
-    if (shell && isShellRoute(url.pathname)) return shell;
+    if (shell && !AUTH_PAGES_RE.test(url.pathname)) return shell;
 
-    const cached = (await cache.match(request)) || (await cache.match(url.pathname));
-    if (cached) return cached;
-    if (shell) return shell;
+    return new Response(
+      "<!doctype html><meta charset=utf-8><title>Bangre — hors ligne</title>" +
+        "<body style=\"font-family:system-ui;padding:40px;color:#333\"><h2>Pas de connexion</h2>" +
+        "<p>Cette page a besoin d'internet. Si Bangre a déjà été ouvert sur cet appareil, " +
+        "<a href=\"/tableau-de-bord\">ouvrez le tableau de bord</a> : il fonctionne hors ligne.</p>",
+      { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    );
+  }
+}
 
-    return new Response("Hors ligne", {
-      status: 503,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
+/**
+ * Next's in-app navigations fetch the next screen's data (RSC). On a wifi with
+ * no internet those requests hang instead of failing; cut them short so Next
+ * falls back to a normal page load, which the offline app then answers.
+ */
+async function handleRsc(request) {
+  try {
+    return await withTimeout(fetch(request), NAVIGATION_TIMEOUT_MS);
+  } catch {
+    return Response.error();
   }
 }
 
 /** Assets are immutable in practice: serve from cache, refresh in the background. */
 async function handleAsset(request) {
   const cache = await caches.open(ASSETS_CACHE);
-  const cached = await cache.match(request);
+  const url = new URL(request.url);
+  // The same file is cached under its bare path by `prepareOffline`.
+  const cached = (await cache.match(request)) || (await cache.match(url.pathname));
   const network = fetch(request)
     .then((res) => {
       if (res.ok) cache.put(request, res.clone());
@@ -204,12 +236,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // RSC payload fetches (client-side <Link> navigation): let them hit the
-  // network untouched. When offline they fail fast and Next falls back to a
-  // full document navigation, which `handleNavigation` answers with the shell.
-  if (url.searchParams.has("_rsc") || request.headers.get("RSC") === "1") return;
+  if (url.searchParams.has("_rsc") || request.headers.get("RSC") === "1") {
+    event.respondWith(handleRsc(request));
+    return;
+  }
 
-  if (STATIC_ASSET_RE.test(url.pathname)) {
+  if (
+    STATIC_ASSET_RE.test(url.pathname) ||
+    url.pathname.startsWith("/_next/static/") ||
+    url.pathname === "/manifest.webmanifest"
+  ) {
     event.respondWith(handleAsset(request));
   }
 });

@@ -12,6 +12,8 @@ import { LateView } from "@/components/views/late-view";
 import { PaymentsView } from "@/components/views/payments-view";
 import { NewStudentForm } from "@/app/(app)/eleves/nouveau/new-student-form";
 import { EditStudentForm } from "@/app/(app)/eleves/[studentId]/modifier/edit-student-form";
+import { ImportForm } from "@/app/(app)/classes/[classId]/eleves/importer/import-form";
+import { ClassConfigSummary } from "@/components/views/class-config-summary";
 import { useOnlineStatus } from "@/components/offline-status";
 import { useLocalData, refreshIfStale } from "@/lib/offline-mirror";
 import type { MirrorData } from "@/lib/offline-data";
@@ -188,6 +190,22 @@ function Screen({
     );
   }
 
+  // /classes/:classId/eleves/importer — the file is read on the device, the
+  // students go to the outbox.
+  if (segments[0] === "classes" && segments[2] === "eleves" && segments[3] === "importer") {
+    const clazz = data.classes.find((c) => c.id === segments[1]);
+    if (!clazz) return <NotInLocalCopy what="Cette classe" />;
+    return <ImportForm classId={clazz.id} className={clazz.name} onNavigate={navigate} />;
+  }
+
+  // /classes/:classId/configuration — readable offline, changed online.
+  if (segments[0] === "classes" && segments[2] === "configuration") {
+    const clazz = data.classes.find((c) => c.id === segments[1]);
+    if (!clazz) return <NotInLocalCopy what="Cette classe" />;
+    const studentCount = data.students.filter((s) => s.classId === clazz.id && s.status === "active").length;
+    return <ClassConfigSummary clazz={clazz} studentCount={studentCount} />;
+  }
+
   // /classes/:classId/eleves
   if (segments[0] === "classes" && segments[2] === "eleves") {
     const clazz = data.classes.find((c) => c.id === segments[1]);
@@ -217,12 +235,20 @@ function Screen({
         offline
         onNavigate={navigate}
         extraActions={
-          <Link
-            href={`/eleves/nouveau?classId=${clazz.id}`}
-            className="h-[38px] rounded-[9px] bg-(--color-primary) text-white flex items-center px-4 text-[13.5px] font-semibold no-underline hover:no-underline"
-          >
-            + Ajouter un élève
-          </Link>
+          <>
+            <Link
+              href={`/classes/${clazz.id}/eleves/importer`}
+              className="h-[38px] rounded-[9px] border border-(--color-border-strong) bg-white flex items-center px-4 text-[13.5px] font-semibold no-underline hover:no-underline"
+            >
+              Importer une liste
+            </Link>
+            <Link
+              href={`/eleves/nouveau?classId=${clazz.id}`}
+              className="h-[38px] rounded-[9px] bg-(--color-primary) text-white flex items-center px-4 text-[13.5px] font-semibold no-underline hover:no-underline"
+            >
+              + Ajouter un élève
+            </Link>
+          </>
         }
       />
     );
@@ -395,16 +421,29 @@ function NotInLocalCopy({ what }: { what: string }) {
   );
 }
 
-/** Screens that genuinely need the server: exports PDF, import, passage d&apos;année, abonnement. */
+/**
+ * The few screens that change the school's structure for everyone at once —
+ * creating a class, the year-end promotion, the subscription — or produce a
+ * server document. Done offline on one computer, they would clash with what
+ * the others do meanwhile, so they wait for the network and say so.
+ */
 function OnlineOnly({ path }: { path: string }) {
+  const reason = path.startsWith("/passage-annee")
+    ? "Le passage d'année transforme toutes les classes de l'établissement d'un coup : il se fait en ligne, pour que tous les postes partent de la même année."
+    : path.startsWith("/classes/nouvelle")
+      ? "Une nouvelle classe se crée en ligne : ses tranches servent ensuite à tous les encaissements, sur tous les postes."
+      : path.startsWith("/abonnement") || path.startsWith("/compte")
+        ? "L'abonnement se gère en ligne."
+        : "Cette page est préparée par le serveur.";
+
   return (
     <div className="p-4 lg:p-8">
-      <div className="max-w-[460px] rounded-2xl border border-(--color-border) bg-white p-5">
-        <div className="text-[15px] font-semibold">Cette page a besoin du réseau</div>
-        <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-1.5">
-          <span className="tabular-nums">{path}</span> est traitée par le serveur (exports PDF, import de listes,
-          passage d&apos;année, abonnement). Tout le reste — classes, élèves, encaissements, retards — fonctionne sans
-          réseau.
+      <div className="max-w-[480px] rounded-2xl border border-(--color-border) bg-white p-5">
+        <div className="text-[15px] font-semibold">Disponible au retour du réseau</div>
+        <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-1.5">{reason}</p>
+        <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-2">
+          Tout le reste fonctionne sans réseau : tableau de bord, classes, élèves (ajout, modification, import de
+          liste), encaissements, retards, rappels WhatsApp et journal des paiements.
         </p>
         <Link href="/tableau-de-bord" className="text-[13px] font-semibold text-(--color-primary) mt-3 inline-block">
           Retour au tableau de bord →

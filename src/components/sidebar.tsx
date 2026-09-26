@@ -8,6 +8,7 @@ import { OfflineStatusCard } from "@/components/offline-status";
 import { InstallAppButton } from "@/components/install-app";
 import { logoutAction } from "@/lib/actions/auth";
 import { clearMirror } from "@/lib/offline-mirror";
+import { forgetOfflinePreparation } from "@/lib/offline-ready";
 
 type NavItem = {
   href: string;
@@ -116,7 +117,10 @@ export function Sidebar({
         </span>
         <span className="text-[13px] text-(--color-text-mutedalt) flex-1 truncate">{contactName}</span>
         {/* Signing out takes the local copy of the school with it. */}
-        <form action={logoutAction} onSubmit={() => void clearMirror()}>
+        <form action={logoutAction} onSubmit={() => {
+            forgetOfflinePreparation();
+            void clearMirror();
+          }}>
           <button type="submit" className="text-[12px] text-(--color-text-muted) hover:text-(--color-danger-text) cursor-pointer">
             Quitter
           </button>

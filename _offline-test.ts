@@ -161,6 +161,14 @@ async function main() {
   });
   check("l'application hors ligne est en cache", shellCached);
 
+  // The sidebar must say the device is ready before anyone relies on it.
+  let ready = false;
+  for (let i = 0; i < 60 && !ready; i++) {
+    await sleep(1000);
+    ready = ((await page.textContent("body")) ?? "").includes("Prêt à fonctionner hors ligne");
+  }
+  check("la barre latérale annonce « Prêt à fonctionner hors ligne »", ready);
+
   // A student whose page this browser has never opened: everything below must
   // work from the local copy, not from a page cached on the way in.
   const student = await prisma.student.findFirstOrThrow({
@@ -173,10 +181,65 @@ async function main() {
   await context.setOffline(true);
   check("navigateur hors ligne, serveur arrêté", !(await page.evaluate(() => navigator.onLine)));
 
+  // First, the case reported from the field: the page was loaded online, the
+  // network goes, and the user keeps clicking through the sidebar.
+  const visible = async () => ((await page.evaluate(() => document.body.innerText)) ?? "").replace(/\s+/g, " ");
+  for (const [link, expected] of [
+    ["Classes", "Classes"],
+    ["Élèves", "élèves actifs"],
+    ["Retards de paiement", "Retards de paiement"],
+    ["Paiements & reçus", "Paiements"],
+    ["Passage d'année", "Disponible au retour du réseau"],
+    ["Tableau de bord", "Total attendu"],
+  ] as const) {
+    await page.getByRole("link", { name: new RegExp(`^${link}`) }).first().click();
+    await page.waitForTimeout(2500);
+    check(`hors ligne, clic « ${link} » depuis la barre latérale`, (await visible()).includes(expected));
+  }
+
   await page.goto(`${BASE}/tableau-de-bord`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
   const dash = await page.textContent("body");
   check("hors ligne : tableau de bord rendu depuis l'appareil", (dash ?? "").includes("Total attendu"));
+
+  const logos = await page.evaluate(() =>
+    [...document.images]
+      .filter((i) => i.src.includes("logo"))
+      .map((i) => `${i.getAttribute("src")}|${i.getAttribute("loading")}|visible=${i.offsetParent !== null}|ok=${i.complete && i.naturalWidth > 0}`)
+  );
+  check(
+    "hors ligne : le logo s'affiche",
+    logos.length > 0 && logos.every((l) => l.includes("visible=false") || l.includes("ok=true")),
+    JSON.stringify(logos)
+  );
+
+  await page.goto(`${BASE}/classes/${student.classId}/configuration`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  const config = await visible();
+  check(
+    "hors ligne : configuration de la classe consultable",
+    config.includes("Tranches") && config.includes("Messages de rappel")
+  );
+
+  // Import of a list, with no network: read on the device, queued.
+  await page.goto(`${BASE}/classes/${student.classId}/eleves/importer`, { waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  await page.setInputFiles('input[type="file"]', {
+    name: "liste.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      ["Nom;Prénom;Téléphone parent", "IMPORTHL;Awa;70 12 34 56", "IMPORTHL;Boukary;70 12 34 57"].join("\n")
+    ),
+  });
+  await page.waitForTimeout(1500);
+  await page.getByRole("button", { name: "Importer" }).click();
+  await page.waitForTimeout(2500);
+  const imported = await visible();
+  check(
+    "hors ligne : import d'une liste d'élèves",
+    imported.includes("IMPORTHL") || imported.includes("ajouté(s) sur cet appareil"),
+    page.url().replace(BASE, "")
+  );
 
   await page.goto(`${BASE}/eleves/${student.id}`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
@@ -247,7 +310,7 @@ async function main() {
   check("l'élève est mis en file avec un message clair", (queuedNotice ?? "").includes("Enregistré hors ligne"));
 
   const queued = await queueLength(page);
-  check("la file locale contient les deux saisies", queued >= 2, `${queued} entrée(s)`);
+  check("la file locale contient toutes les saisies", queued >= 4, `${queued} entrée(s)`);
 
   await page.goto(`${BASE}/eleves?q=SANOU`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2000);
@@ -320,6 +383,9 @@ async function main() {
     newStudentPayment ? `reçu N° ${newStudentPayment.receiptNumber}` : "absent"
   );
 
+  const importedStudents = await prisma.student.findMany({ where: { lastName: "IMPORTHL" } });
+  check("les élèves importés hors ligne sont arrivés sur le serveur", importedStudents.length === 2, `${importedStudents.length}`);
+
   const offlinePayment = await prisma.payment.findFirst({
     where: { studentId: student.id, amount: 7500, offlineCreated: true },
     orderBy: { date: "desc" },
@@ -371,6 +437,7 @@ async function main() {
     });
   }
   if (createdStudent) await prisma.student.delete({ where: { id: createdStudent.id } });
+  await prisma.student.deleteMany({ where: { lastName: "IMPORTHL" } });
   if (offlinePayment) {
     await prisma.paymentAllocation.deleteMany({ where: { paymentId: offlinePayment.id } });
     await prisma.payment.delete({ where: { id: offlinePayment.id } });
