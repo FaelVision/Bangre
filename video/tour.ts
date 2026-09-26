@@ -2,7 +2,8 @@
  * Vidéo de présentation de Bangre, filmée sur le compte de démonstration local.
  *
  * 1. npm run build && npm run demo:reset
- * 2. powershell -ExecutionPolicy Bypass -File video/tts.ps1      (voix off → video/out/audio)
+ * 2. FFMPEG=<ffmpeg.exe> python video/voix.py                    (voix off naturelle → video/out/audio ;
+ *    sans réseau : powershell -ExecutionPolicy Bypass -File video/tts.ps1, voix Windows)
  * 3. FFMPEG=<chemin de ffmpeg.exe> npx tsx video/tour.ts           (tournage + montage)
  * 4. npm run demo:reset                                           (le tournage inscrit un élève et encaisse)
  *
