@@ -6,6 +6,18 @@
  * in a unit test. `demo-school.ts` is what writes it down.
  */
 
+import {
+  capitalize,
+  canteenReminderMessage,
+  monthDueDate,
+  monthKey,
+  monthLabel,
+  monthRange,
+  priceCanteenSelection,
+  schoolYearMonths,
+} from "@/lib/canteen";
+import { formatCFA } from "@/lib/format";
+
 export const DEMO_SCHOOL_NAME = "Groupe scolaire La Réussite";
 export const DEMO_EMAIL = "demo@bangre.bf";
 /** 00 is not an allocated Burkinabè mobile prefix: it cannot collide with a real school. */
@@ -134,6 +146,36 @@ export type DemoDataset = {
   }[];
   allocations: { id: string; paymentId: string; trancheId: string; amount: number }[];
   reminders: { id: string; studentId: string; trancheId: string | null; message: string; sentAt: Date }[];
+  canteen: DemoCanteen;
+};
+
+/** The canteen of the demo school — every situation the Cantine tab can show. */
+export type DemoCanteen = {
+  plan: {
+    id: string;
+    monthlyPrice: number;
+    annualPrice: number;
+    firstMonth: string;
+    lastMonth: string;
+    dueDay: number;
+  };
+  packages: { id: string; planId: string; label: string; months: string; price: number; order: number }[];
+  enrollments: { id: string; studentId: string; startMonth: string; endMonth: string | null; createdAt: Date }[];
+  payments: {
+    id: string;
+    studentId: string;
+    amount: number;
+    label: string;
+    method: string;
+    receivedBy: string;
+    date: Date;
+    receiptNumber: number;
+  }[];
+  paymentMonths: { id: string; paymentId: string; month: string; amount: number }[];
+  skips: { id: string; studentId: string; month: string; createdAt: Date }[];
+  reminders: { id: string; studentId: string; message: string; sentAt: Date }[];
+  /** The canteen history, as the app would have written it. */
+  actions: { id: string; studentId: string; kind: string; data: string; label: string; createdAt: Date }[];
 };
 
 /**
@@ -154,6 +196,16 @@ export function buildDemoDataset(now: Date = new Date(), newId: () => string = n
     payments: [],
     allocations: [],
     reminders: [],
+    canteen: {
+      plan: { id: "", monthlyPrice: 0, annualPrice: 0, firstMonth: "", lastMonth: "", dueDay: 5 },
+      packages: [],
+      enrollments: [],
+      payments: [],
+      paymentMonths: [],
+      skips: [],
+      reminders: [],
+      actions: [],
+    }, // filled below, once the students exist
   };
 
   const firstDue = addDays(now, -70);
@@ -299,15 +351,266 @@ export function buildDemoDataset(now: Date = new Date(), newId: () => string = n
     }
   }
 
-  // Receipts are numbered in the order the money came in, as the counter does.
+  dataset.canteen = buildDemoCanteen(dataset, now, newId);
+
+  // Receipts are numbered in the order the money came in, as the counter does —
+  // tuition and canteen share one sequence, as they do in the app.
   receipts.sort((a, b) => a.payment.date.getTime() - b.payment.date.getTime());
-  receipts.forEach((receipt, index) => {
-    receipt.payment.receiptNumber = index + 1;
+  for (const receipt of receipts) {
     dataset.payments.push(receipt.payment);
     dataset.allocations.push(...receipt.allocations);
+  }
+  const numbered = [...dataset.payments, ...dataset.canteen.payments].sort((a, b) => a.date.getTime() - b.date.getTime());
+  numbered.forEach((payment, index) => {
+    payment.receiptNumber = index + 1;
   });
+  dataset.canteen.actions = canteenHistory(dataset.canteen, now, newId);
 
   return dataset;
+}
+
+// ---------------------------------------------------------------------------
+// Cantine
+// ---------------------------------------------------------------------------
+
+/** The classes whose families take the canteen in the demo — mostly the youngest. */
+const CANTEEN_CLASSES: Record<string, number> = { CP1: 0.85, CE1: 0.8, CM2: 0.7, "6e A": 0.35 };
+
+const CANTEEN_MONTHLY = 7500;
+const CANTEEN_ANNUAL = 65000; // 10 months at 7 500 = 75 000: 10 000 saved paying the year at once
+const CANTEEN_QUARTER = 21000; // 3 months at 7 500 = 22 500
+const CANTEEN_DUE_DAY = 5;
+
+/**
+ * Who eats at the canteen and how each family pays: the whole year, by the
+ * trimester, month by month, late, joined during the year, skipped months,
+ * left. Dates follow `now`, like the rest of the demo, so the Cantine tab looks
+ * lived-in whatever the day of the presentation.
+ */
+function buildDemoCanteen(
+  dataset: DemoDataset,
+  now: Date,
+  newId: () => string
+): DemoCanteen {
+  // A seed of its own: the tuition side of the demo stays exactly as it was.
+  const rng = mulberry32(20261001);
+  const int = (min: number, max: number) => Math.floor(rng() * (max - min + 1)) + min;
+
+  // September to June: the demo's school year is already well under way (its
+  // first tranche fell due ten weeks ago), so its canteen has a history too —
+  // with late months to show from the first days of October.
+  const yearMonths = schoolYearMonths(dataset.academicYearLabel, now);
+  const firstMonth = yearMonths[1];
+  const lastMonth = yearMonths[10];
+  const months = monthRange(firstMonth, lastMonth);
+  const current = monthKey(now);
+  const started = months.filter((m) => m <= current);
+  const pastDue = months.filter((m) => monthDueDate(m, CANTEEN_DUE_DAY).getTime() < now.getTime());
+
+  const planId = newId();
+  const packages = [0, 3, 6].map((from, order) => ({
+    id: newId(),
+    planId,
+    label: `${order + 1}${order === 0 ? "er" : "e"} trimestre`,
+    months: months.slice(from, from + 3).join(","),
+    price: CANTEEN_QUARTER,
+    order,
+  }));
+
+  const canteen: DemoCanteen = {
+    plan: { id: planId, monthlyPrice: CANTEEN_MONTHLY, annualPrice: CANTEEN_ANNUAL, firstMonth, lastMonth, dueDay: CANTEEN_DUE_DAY },
+    packages,
+    enrollments: [],
+    payments: [],
+    paymentMonths: [],
+    skips: [],
+    reminders: [],
+    actions: [],
+  };
+
+  /** A counter moment early in `month` — never later than now. */
+  const dayIn = (month: string, maxDay = 4) => {
+    const [y, m] = month.split("-").map(Number);
+    const at = new Date(y, m - 1, int(1, maxDay), int(8, 16), int(0, 59), int(0, 59));
+    return at.getTime() < now.getTime() ? at : new Date(now.getTime() - int(1, 4) * 24 * 60 * 60 * 1000);
+  };
+
+  const classById = new Map(dataset.classes.map((c) => [c.id, c.name]));
+  const state = new Map<string, { owed: string[]; skipped: Set<string> }>();
+
+  const enroll = (studentId: string, startMonth: string, endMonth: string | null = null) => {
+    const createdAt = dayIn(startMonth, 1);
+    createdAt.setDate(Math.max(1, createdAt.getDate() - 3));
+    canteen.enrollments.push({ id: newId(), studentId, startMonth, endMonth, createdAt });
+    const owed = months.filter((m) => m >= startMonth && (!endMonth || m <= endMonth));
+    state.set(studentId, { owed, skipped: new Set() });
+  };
+
+  /** Prices the selection with the app's own rules, so labels and amounts are the real ones. */
+  const pay = (studentId: string, selection: { annual?: boolean; packageIds?: string[]; months?: string[] }, date: Date) => {
+    const s = state.get(studentId)!;
+    const quote = priceCanteenSelection(
+      {
+        monthlyPrice: CANTEEN_MONTHLY,
+        annualPrice: CANTEEN_ANNUAL,
+        allMonths: months,
+        owed: s.owed.filter((m) => !s.skipped.has(m)),
+        packages: packages.map((p) => ({ id: p.id, label: p.label, price: p.price, months: p.months.split(",") })),
+      },
+      { annual: Boolean(selection.annual), packageIds: selection.packageIds ?? [], months: selection.months ?? [] }
+    );
+    if (!quote.ok) return;
+    const paymentId = newId();
+    canteen.payments.push({
+      id: paymentId,
+      studentId,
+      amount: quote.amount,
+      label: quote.label,
+      method: rng() > 0.7 ? "mobile_money" : "cash",
+      receivedBy: DEMO_CONTACT_NAME,
+      date,
+      receiptNumber: 0, // numbered with the tuition receipts, in date order
+    });
+    for (const a of quote.allocations) canteen.paymentMonths.push({ id: newId(), paymentId, ...a });
+    s.owed = s.owed.filter((m) => !quote.allocations.some((a) => a.month === m));
+  };
+
+  const payMonths = (studentId: string, list: string[]) => {
+    for (const m of list) pay(studentId, { months: [m] }, dayIn(m));
+  };
+
+  for (const student of dataset.students) {
+    const share = CANTEEN_CLASSES[classById.get(student.classId) ?? ""];
+    if (!share || rng() > share) continue;
+
+    const roll = rng();
+    if (roll < 0.12) {
+      // L'année entière, payée d'un coup à la rentrée.
+      enroll(student.id, firstMonth);
+      pay(student.id, { annual: true }, started.length ? dayIn(firstMonth) : dayIn(current));
+    } else if (roll < 0.37) {
+      // Au trimestre, chacun payé au début.
+      enroll(student.id, firstMonth);
+      for (const p of packages) {
+        const first = p.months.split(",")[0];
+        if (first <= current || p === packages[0]) pay(student.id, { packageIds: [p.id] }, dayIn(first));
+      }
+    } else if (roll < 0.6) {
+      // Au mois, à jour ; le mois en cours parfois pas encore réglé (avant le 5).
+      enroll(student.id, firstMonth);
+      payMonths(student.id, started.filter((m) => m < current || rng() > 0.35));
+    } else if (roll < 0.78) {
+      // En retard : les un ou deux derniers mois échus ne sont pas payés.
+      enroll(student.id, firstMonth);
+      const unpaid = Math.min(pastDue.length, int(1, 2));
+      payMonths(student.id, pastDue.slice(0, pastDue.length - unpaid));
+      if (unpaid > 0 && student.whatsappStatus === "reachable" && rng() > 0.4) {
+        const late = pastDue.slice(pastDue.length - unpaid);
+        canteen.reminders.push({
+          id: newId(),
+          studentId: student.id,
+          message: canteenReminderMessage({
+            parentName: student.parentName,
+            studentFirstName: student.firstName,
+            studentLastName: student.lastName,
+            className: classById.get(student.classId) ?? "",
+            lateMonths: late,
+            amount: late.length * CANTEEN_MONTHLY,
+            schoolName: DEMO_SCHOOL_NAME,
+          }),
+          sentAt: new Date(now.getTime() - int(1, 6) * 24 * 60 * 60 * 1000),
+        });
+      }
+    } else if (roll < 0.85) {
+      // Arrivé en cours d'année : ne doit que depuis son arrivée.
+      const start = started.length > 2 ? started[started.length - 2] : (months[2] ?? firstMonth);
+      enroll(student.id, start);
+      payMonths(student.id, started.filter((m) => m >= start && m < current));
+    } else if (roll < 0.93) {
+      // Un mois sans cantine (enfant absent), les autres payés.
+      enroll(student.id, firstMonth);
+      const skipped = started.length > 1 ? started[1] : months[1];
+      state.get(student.id)!.skipped.add(skipped);
+      canteen.skips.push({ id: newId(), studentId: student.id, month: skipped, createdAt: dayIn(skipped, 2) });
+      payMonths(student.id, started.filter((m) => m !== skipped && m < current));
+    } else {
+      // Sorti de la cantine après quelques mois.
+      const end = started.length > 1 ? started[1] : firstMonth;
+      enroll(student.id, firstMonth, end);
+      payMonths(student.id, months.filter((m) => m <= end && m <= current));
+    }
+  }
+
+  // At least one canteen payment taken today: the journal of the day, and an
+  // action the presenter can undo from the history.
+  // Preferably a month already due — a family settling the current month at
+  // the counter, rather than one paying far ahead.
+  const nextOwed = (studentId: string) => {
+    const s = state.get(studentId)!;
+    return s.owed.find((m) => !s.skipped.has(m));
+  };
+  const open = canteen.enrollments.filter((e) => !e.endMonth && nextOwed(e.studentId));
+  const today = open.find((e) => nextOwed(e.studentId)! <= current) ?? open[0];
+  if (today) {
+    const s = state.get(today.studentId)!;
+    const next = s.owed.find((m) => !s.skipped.has(m))!;
+    pay(today.studentId, { months: [next] }, new Date(now.getTime() - int(20, 90) * 60 * 1000));
+  }
+
+  return canteen;
+}
+
+/**
+ * The canteen history the app would have recorded, written once every receipt
+ * has its number. Only the last 30 days show on screen; today's can be undone.
+ */
+function canteenHistory(canteen: DemoCanteen, now: Date, newId: () => string): DemoCanteen["actions"] {
+  const actions: DemoCanteen["actions"] = [];
+  for (const e of canteen.enrollments) {
+    actions.push({
+      id: newId(),
+      studentId: e.studentId,
+      kind: "enroll",
+      data: JSON.stringify({ enrollmentId: e.id }),
+      label: `Inscription dès ${monthLabel(e.startMonth)}`,
+      createdAt: e.createdAt,
+    });
+    if (e.endMonth) {
+      // Recorded a little after the last month eaten — never in the future.
+      const left = new Date(e.createdAt);
+      left.setMonth(left.getMonth() + 2);
+      if (left.getTime() > now.getTime()) left.setTime(now.getTime() - 24 * 60 * 60 * 1000);
+      actions.push({
+        id: newId(),
+        studentId: e.studentId,
+        kind: "leave",
+        data: JSON.stringify({ enrollmentId: e.id, startMonth: e.startMonth, endMonth: e.endMonth, cancelled: false }),
+        label: `Sortie de la cantine après ${monthLabel(e.endMonth)}`,
+        createdAt: left,
+      });
+    }
+  }
+  for (const k of canteen.skips) {
+    actions.push({
+      id: newId(),
+      studentId: k.studentId,
+      kind: "skip",
+      data: JSON.stringify({ month: k.month, skipped: true }),
+      label: `${capitalize(monthLabel(k.month))} sans cantine`,
+      createdAt: k.createdAt,
+    });
+  }
+  for (const p of canteen.payments) {
+    actions.push({
+      id: newId(),
+      studentId: p.studentId,
+      kind: "payment",
+      data: JSON.stringify({ paymentId: p.id }),
+      label: `Paiement ${formatCFA(p.amount)} · ${p.label} · reçu N° ${String(p.receiptNumber).padStart(4, "0")}`,
+      createdAt: p.date,
+    });
+  }
+  return actions;
 }
 
 /** Identifiers are generated here rather than by the database, so a whole school can go in as a few batch inserts. */

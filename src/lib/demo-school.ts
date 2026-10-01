@@ -65,7 +65,9 @@ export async function resetDemoSchool(now: Date = new Date()): Promise<DemoReset
         // thing this account must never do.
         subscriptionStatus: "active",
         subscriptionRenewsAt: DEMO_RENEWAL_DATE,
-        receiptCounter: dataset.payments.length,
+        // One receipt sequence for tuition and canteen, as in the app.
+        receiptCounter: dataset.payments.length + dataset.canteen.payments.length,
+        canteenEnabled: true,
       },
     }),
     prisma.academicYear.create({
@@ -98,6 +100,7 @@ export async function resetDemoSchool(now: Date = new Date()): Promise<DemoReset
         status: "sent",
       })),
     }),
+    ...canteenWrites(dataset, schoolId, academicYearId),
   ]);
 
   return {
@@ -109,6 +112,24 @@ export async function resetDemoSchool(now: Date = new Date()): Promise<DemoReset
     phone: DEMO_PHONE,
     password: DEMO_PASSWORD,
   };
+}
+
+/** The demo canteen: prices, enrolments, receipts, skipped months, rappels and history. */
+function canteenWrites(dataset: ReturnType<typeof buildDemoDataset>, schoolId: string, academicYearId: string) {
+  const { canteen } = dataset;
+  const year = { schoolId, academicYearId };
+  return [
+    prisma.canteenPlan.create({ data: { ...canteen.plan, ...year } }),
+    prisma.canteenPackage.createMany({ data: canteen.packages }),
+    prisma.canteenEnrollment.createMany({ data: canteen.enrollments.map((e) => ({ ...e, ...year })) }),
+    prisma.canteenPayment.createMany({
+      data: canteen.payments.map((p) => ({ ...p, ...year, offlineCreated: false, synced: true })),
+    }),
+    prisma.canteenPaymentMonth.createMany({ data: canteen.paymentMonths }),
+    prisma.canteenSkip.createMany({ data: canteen.skips.map((k) => ({ ...k, ...year })) }),
+    prisma.canteenReminder.createMany({ data: canteen.reminders.map((r) => ({ ...r, schoolId })) }),
+    prisma.canteenAction.createMany({ data: canteen.actions.map((a) => ({ ...a, ...year })) }),
+  ];
 }
 
 export type DemoSchoolSummary = {

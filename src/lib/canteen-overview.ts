@@ -161,7 +161,7 @@ export function canteenOverview(ds: CanteenDataset, filter: CanteenFilter = {}, 
   const paymentList = vue === "paiements" ? allPayments : [];
 
   // The history: what was done, by kind, and whether it can still be undone.
-  const actions = ds.actions ?? [];
+  const actions = [...(ds.actions ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const historyList = vue === "historique" ? actions : [];
   // A payment's own undo, offered from the journal while it is still possible.
   const undoByPayment = new Map<string, string>();
