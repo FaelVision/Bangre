@@ -14,6 +14,7 @@ import {
   setCanteenSkip,
   type CanteenPaymentInput,
 } from "@/lib/canteen-core";
+import { parseService, type SchoolService } from "@/lib/services";
 
 /** Every entry of the device outbox carries these, whatever its kind. */
 type Envelope = { id?: string; schoolId?: string };
@@ -25,10 +26,11 @@ type Body = Envelope &
     | { kind: "student.update"; studentId: string; payload: StudentInput }
     | { kind: "reminder.send"; studentId: string; trancheId: string | null; message: string }
     | { kind: "canteen.payment"; payload: CanteenPaymentInput }
-    | { kind: "canteen.enroll"; studentId: string; startMonth: string | null }
-    | { kind: "canteen.leave"; studentId: string; endMonth: string }
-    | { kind: "canteen.reminder"; studentId: string; message: string }
-    | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean }
+    // `service` absent: the canteen (entries queued before the garde existed).
+    | { kind: "canteen.enroll"; studentId: string; startMonth: string | null; service?: SchoolService }
+    | { kind: "canteen.leave"; studentId: string; endMonth: string; service?: SchoolService }
+    | { kind: "canteen.reminder"; studentId: string; message: string; service?: SchoolService }
+    | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean; service?: SchoolService }
   );
 
 /** A replay of this entry within that window is the same entry sent twice, not a new one. */
@@ -149,8 +151,8 @@ export async function POST(req: NextRequest) {
       case "canteen.leave": {
         const result =
           body.kind === "canteen.enroll"
-            ? await enrollInCanteen(schoolId, body.studentId, body.startMonth)
-            : await leaveCanteen(schoolId, body.studentId, body.endMonth);
+            ? await enrollInCanteen(schoolId, body.studentId, body.startMonth, parseService(body.service))
+            : await leaveCanteen(schoolId, body.studentId, body.endMonth, parseService(body.service));
         if (result.ok) return NextResponse.json(result);
         return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
       }
@@ -158,7 +160,9 @@ export async function POST(req: NextRequest) {
       // Sets a state ("sans cantine" or not) rather than toggling it: a replay
       // leaves it as it is.
       case "canteen.skip": {
-        const result = await setCanteenSkip(schoolId, body.studentId, body.month, Boolean(body.skipped));
+        const result = await setCanteenSkip(schoolId, body.studentId, body.month, Boolean(body.skipped), {
+          service: parseService(body.service),
+        });
         if (result.ok) return NextResponse.json(result);
         return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
       }
@@ -171,9 +175,11 @@ export async function POST(req: NextRequest) {
         if (!student) {
           return NextResponse.json({ ok: false, error: "Élève introuvable.", permanent: true }, { status: 400 });
         }
+        const service = parseService(body.service);
         const replayed = await prisma.canteenReminder.findFirst({
           where: {
             schoolId,
+            service,
             studentId: body.studentId,
             message: body.message,
             sentAt: { gte: new Date(Date.now() - REPLAY_WINDOW_MS) },
@@ -181,7 +187,7 @@ export async function POST(req: NextRequest) {
           select: { id: true },
         });
         if (replayed) return NextResponse.json({ ok: true, reminderId: replayed.id });
-        return NextResponse.json(await recordCanteenReminder(schoolId, body.studentId, body.message));
+        return NextResponse.json(await recordCanteenReminder(schoolId, body.studentId, body.message, service));
       }
 
       default:

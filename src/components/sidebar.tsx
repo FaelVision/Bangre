@@ -32,7 +32,16 @@ export function Sidebar({
   academicYearLabel: string;
   contactInitials: string;
   contactName: string;
-  counts: { classesCount: number; studentsCount: number; lateCount: number; canteenLateCount?: number };
+  counts: {
+    classesCount: number;
+    studentsCount: number;
+    lateCount: number;
+    canteenLateCount?: number;
+    daycareLateCount?: number;
+    /** The school's options: their tab shows only once turned on (page Options). */
+    canteenEnabled?: boolean;
+    daycareEnabled?: boolean;
+  };
   /** Drawer state below `lg`; ignored on large screens where the column is permanent. */
   open?: boolean;
   onClose?: () => void;
@@ -48,7 +57,12 @@ export function Sidebar({
     { href: "/eleves", label: "Élèves", count: counts.studentsCount },
     { href: "/retards", label: "Retards de paiement", count: counts.lateCount, badgeTone: "danger" },
     { href: "/paiements", label: "Paiements & reçus" },
-    { href: "/cantine", label: "Cantine", count: counts.canteenLateCount || undefined, badgeTone: "danger" },
+    ...(counts.canteenEnabled
+      ? [{ href: "/cantine", label: "Cantine", count: counts.canteenLateCount || undefined, badgeTone: "danger" as const }]
+      : []),
+    ...(counts.daycareEnabled
+      ? [{ href: "/garde", label: "Garde d'enfants", count: counts.daycareLateCount || undefined, badgeTone: "danger" as const }]
+      : []),
     { href: "/passage-annee", label: "Passage d'année" },
   ];
 
@@ -109,6 +123,19 @@ export function Sidebar({
       })}
 
       <div className="flex-1" />
+
+      <Link
+        href="/options"
+        className={cn(
+          "flex items-center gap-2 px-2.5 py-2 mb-1.5 rounded-[9px] text-[13px] no-underline hover:no-underline",
+          pathname === "/options"
+            ? "bg-(--color-success-bg-alt) text-(--color-success-text-dark) font-semibold"
+            : "text-(--color-text-muted) font-medium hover:bg-white"
+        )}
+      >
+        <span aria-hidden>⚙</span>
+        Options de l&apos;établissement
+      </Link>
 
       <InstallAppButton />
       <OfflineStatusCard />

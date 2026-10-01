@@ -20,7 +20,7 @@ function academicYearStart(label: string | undefined) {
   return new Date(Date.UTC(startYear, 9, 1));
 }
 
-const LEVEL_ORDER: Record<string, number> = { Primaire: 0, Collège: 1, Lycée: 2 };
+const LEVEL_ORDER: Record<string, number> = { Maternelle: 0, Primaire: 0, Collège: 1, Lycée: 2 };
 
 export async function createClassAction(
   _prevState: ClassActionState,

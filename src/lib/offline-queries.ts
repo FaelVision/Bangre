@@ -38,7 +38,10 @@ export function sidebarCounts(data: MirrorData, now: Date = new Date()) {
     classesCount: data.classes.filter((c) => !c.archived).length,
     studentsCount: rows.length,
     lateCount: rows.filter((r) => r.summary.status === "retard").length,
-    canteenLateCount: canteenLateCount(canteenDataset(data), now),
+    canteenLateCount: canteenLateCount(canteenDataset(data, "canteen"), now),
+    daycareLateCount: canteenLateCount(canteenDataset(data, "daycare"), now),
+    canteenEnabled: data.school.canteenEnabled,
+    daycareEnabled: data.school.daycareEnabled,
   };
 }
 

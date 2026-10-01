@@ -6,6 +6,7 @@ import type {
   CanteenPlan,
 } from "@prisma/client";
 import { formatCFA, formatDate } from "@/lib/format";
+import { serviceInfo, type SchoolService } from "@/lib/services";
 
 /**
  * The canteen rules: which months a student owes, which are paid or late, and
@@ -425,8 +426,9 @@ export function capitalize(text: string) {
 // Messages
 // ---------------------------------------------------------------------------
 
-/** The WhatsApp confirmation after a canteen payment. */
+/** The WhatsApp confirmation after a canteen (or garde) payment. */
 export function canteenConfirmationMessage(input: {
+  service?: SchoolService;
   amount: number;
   label: string;
   studentFirstName: string;
@@ -437,11 +439,12 @@ export function canteenConfirmationMessage(input: {
   receiptNumber: number | null;
 }) {
   const receipt = input.receiptNumber ? `reçu N° ${input.receiptNumber}` : "reçu remis à l'école";
-  return `Bonjour, nous confirmons la réception de ${formatCFA(input.amount)} pour la cantine de ${input.studentFirstName} ${input.studentLastName} (${input.className}) le ${formatDate(input.date)} : ${input.label.charAt(0).toLowerCase()}${input.label.slice(1)}. Merci. — ${input.schoolName}, ${receipt}`;
+  return `Bonjour, nous confirmons la réception de ${formatCFA(input.amount)} pour ${serviceInfo(input.service).the} de ${input.studentFirstName} ${input.studentLastName} (${input.className}) le ${formatDate(input.date)} : ${input.label.charAt(0).toLowerCase()}${input.label.slice(1)}. Merci. — ${input.schoolName}, ${receipt}`;
 }
 
-/** The rappel to a family whose canteen months are late. */
+/** The rappel to a family whose canteen (or garde) months are late. */
 export function canteenReminderMessage(input: {
+  service?: SchoolService;
   parentName: string | null;
   studentFirstName: string;
   studentLastName: string;
@@ -450,5 +453,5 @@ export function canteenReminderMessage(input: {
   amount: number;
   schoolName: string;
 }) {
-  return `Bonjour ${input.parentName || "Parent"}, la cantine de ${input.studentFirstName} ${input.studentLastName} (${input.className}) n'est pas réglée pour ${describeMonths(input.lateMonths)}. Montant dû : ${formatCFA(input.amount)}. Merci de passer à l'école pour régulariser. — ${input.schoolName}`;
+  return `Bonjour ${input.parentName || "Parent"}, ${serviceInfo(input.service).the} de ${input.studentFirstName} ${input.studentLastName} (${input.className}) n'est pas réglée pour ${describeMonths(input.lateMonths)}. Montant dû : ${formatCFA(input.amount)}. Merci de passer à l'école pour régulariser. — ${input.schoolName}`;
 }

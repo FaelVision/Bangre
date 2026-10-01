@@ -19,11 +19,14 @@ import { canteenLateCount, type CanteenDataset } from "@/lib/canteen-overview";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 import { formatCFA } from "@/lib/format";
 import { undoableToday } from "@/lib/canteen-overview";
+import { levelAllowed, parseService, serviceInfo, type SchoolService } from "@/lib/services";
 
 /**
- * Canteen reads and writes against the database. Shared by the server actions
- * (online) and by `/api/sync` (entries replayed from a device outbox), so a
- * payment or an enrolment made offline goes through the very same checks.
+ * Canteen (and garde d'enfants) reads and writes against the database. Shared
+ * by the server actions (online) and by `/api/sync` (entries replayed from a
+ * device outbox), so a payment or an enrolment made offline goes through the
+ * very same checks. Every function works on one service, the canteen unless
+ * told otherwise.
  */
 
 /** Rappels older than this only feed the "dernier rappel" column. */
@@ -41,90 +44,111 @@ export async function currentAcademicYear(schoolId: string) {
   );
 }
 
-async function planFor(schoolId: string, academicYearId: string): Promise<CanteenPlanWithPackages | null> {
-  return prisma.canteenPlan.findUnique({
-    where: { schoolId_academicYearId: { schoolId, academicYearId } },
+/** The service's prices for one year. One per service and year: the settings keep it so. */
+export async function planFor(
+  schoolId: string,
+  academicYearId: string,
+  service: SchoolService = "canteen"
+): Promise<CanteenPlanWithPackages | null> {
+  return prisma.canteenPlan.findFirst({
+    where: { schoolId, academicYearId, service },
     include: { packages: { orderBy: { order: "asc" } } },
+    orderBy: { createdAt: "asc" },
   });
 }
 
-/** Everything the Cantine screens compute from, for the current year. Read once per request. */
-export const loadCanteenDataset = cache(async (schoolId: string): Promise<CanteenDataset> => {
-  const [school, year] = await Promise.all([
-    prisma.school.findUniqueOrThrow({
-      where: { id: schoolId },
-      select: { name: true, contactName: true, receiptCounter: true, canteenEnabled: true },
-    }),
-    currentAcademicYear(schoolId),
-  ]);
+function enabledField(service: SchoolService) {
+  return service === "daycare" ? "daycareEnabled" : "canteenEnabled";
+}
 
-  const base = {
-    enabled: school.canteenEnabled,
-    schoolName: school.name,
-    contactName: school.contactName,
-    receiptCounter: school.receiptCounter,
-    yearLabel: year?.label ?? "",
-  };
-  // Every screen shows nothing of a canteen that is turned off: skip the
-  // whole-school reads for the many schools that never use it.
-  if (!school.canteenEnabled) {
-    return { ...base, plan: null, students: [], classes: [], enrollments: [], payments: [], reminders: [], skips: [], actions: [] };
+/** Everything the Cantine (or Garde) screens compute from, for the current year. Read once per request. */
+export const loadCanteenDataset = cache(
+  async (schoolId: string, service: SchoolService = "canteen"): Promise<CanteenDataset> => {
+    const [school, year] = await Promise.all([
+      prisma.school.findUniqueOrThrow({
+        where: { id: schoolId },
+        select: { name: true, contactName: true, receiptCounter: true, canteenEnabled: true, daycareEnabled: true },
+      }),
+      currentAcademicYear(schoolId),
+    ]);
+    const enabled = school[enabledField(service)];
+
+    const base = {
+      service,
+      enabled,
+      schoolName: school.name,
+      contactName: school.contactName,
+      receiptCounter: school.receiptCounter,
+      yearLabel: year?.label ?? "",
+    };
+    // Every screen shows nothing of a service that is turned off: skip the
+    // whole-school reads for the many schools that never use it.
+    if (!enabled) {
+      return { ...base, plan: null, students: [], classes: [], enrollments: [], payments: [], reminders: [], skips: [], actions: [] };
+    }
+
+    const yearId = year?.id ?? "";
+    const [plan, students, classes, enrollments, payments, reminders, skips, actions] = await Promise.all([
+      year ? planFor(schoolId, year.id, service) : null,
+      prisma.student.findMany({ where: { schoolId }, include: { class: { select: { name: true, level: true } } } }),
+      prisma.schoolClass.findMany({
+        where: { schoolId, archived: false },
+        select: { id: true, name: true, level: true },
+        orderBy: { order: "asc" },
+      }),
+      prisma.canteenEnrollment.findMany({ where: { schoolId, academicYearId: yearId, service } }),
+      prisma.canteenPayment.findMany({
+        where: { schoolId, academicYearId: yearId, service },
+        include: { months: true },
+        orderBy: { date: "desc" },
+      }),
+      prisma.canteenReminder.findMany({
+        where: { schoolId, service },
+        orderBy: { sentAt: "desc" },
+        take: REMINDERS_LIMIT,
+      }),
+      prisma.canteenSkip.findMany({ where: { schoolId, academicYearId: yearId, service } }),
+      prisma.canteenAction.findMany({
+        where: { schoolId, service, createdAt: { gte: new Date(Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000) } },
+        orderBy: { createdAt: "desc" },
+        take: HISTORY_LIMIT,
+      }),
+    ]);
+
+    return {
+      ...base,
+      plan,
+      students,
+      classes,
+      enrollments,
+      payments,
+      reminders,
+      skips,
+      actions,
+    };
   }
+);
 
-  const yearId = year?.id ?? "";
-  const [plan, students, classes, enrollments, payments, reminders, skips, actions] = await Promise.all([
-    year ? planFor(schoolId, year.id) : null,
-    prisma.student.findMany({ where: { schoolId }, include: { class: { select: { name: true } } } }),
-    prisma.schoolClass.findMany({
-      where: { schoolId, archived: false },
-      select: { id: true, name: true },
-      orderBy: { order: "asc" },
-    }),
-    prisma.canteenEnrollment.findMany({ where: { schoolId, academicYearId: yearId } }),
-    prisma.canteenPayment.findMany({
-      where: { schoolId, academicYearId: yearId },
-      include: { months: true },
-      orderBy: { date: "desc" },
-    }),
-    prisma.canteenReminder.findMany({ where: { schoolId }, orderBy: { sentAt: "desc" }, take: REMINDERS_LIMIT }),
-    prisma.canteenSkip.findMany({ where: { schoolId, academicYearId: yearId } }),
-    prisma.canteenAction.findMany({
-      where: { schoolId, createdAt: { gte: new Date(Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000) } },
-      orderBy: { createdAt: "desc" },
-      take: HISTORY_LIMIT,
-    }),
-  ]);
-
-  return {
-    ...base,
-    plan,
-    students,
-    classes,
-    enrollments,
-    payments,
-    reminders,
-    skips,
-    actions,
-  };
-});
-
-/** The sidebar badge: families behind on the canteen. Nothing to load for a school without one. */
-export async function canteenLateCountFor(schoolId: string) {
-  return canteenLateCount(await loadCanteenDataset(schoolId));
+/** The sidebar badge: families behind on the service. Nothing to load for a school without it. */
+export async function canteenLateCountFor(schoolId: string, service: SchoolService = "canteen") {
+  return canteenLateCount(await loadCanteenDataset(schoolId, service));
 }
 
 /** The checks every canteen write starts with. */
-async function canteenContext(schoolId: string) {
+async function canteenContext(schoolId: string, service: SchoolService) {
+  const info = serviceInfo(service);
   const school = await prisma.school.findUnique({
     where: { id: schoolId },
-    select: { canteenEnabled: true, name: true },
+    select: { canteenEnabled: true, daycareEnabled: true, name: true },
   });
   if (!school) return { error: "Établissement introuvable." } as const;
-  if (!school.canteenEnabled) return { error: "La cantine n'est pas activée pour cet établissement." } as const;
+  if (!school[enabledField(service)]) {
+    return { error: `${capitalize(info.the)} n'est pas activée pour cet établissement.` } as const;
+  }
   const year = await currentAcademicYear(schoolId);
   if (!year) return { error: "Aucune année scolaire active." } as const;
-  const plan = await planFor(schoolId, year.id);
-  if (!plan) return { error: "Les tarifs de la cantine ne sont pas encore réglés pour cette année." } as const;
+  const plan = await planFor(schoolId, year.id, service);
+  if (!plan) return { error: `Les tarifs de ${info.the} ne sont pas encore réglés pour cette année.` } as const;
   return { school, year, plan } as const;
 }
 
@@ -133,6 +157,8 @@ async function canteenContext(schoolId: string) {
 // ---------------------------------------------------------------------------
 
 export type CanteenPaymentInput = {
+  /** The canteen when absent — the entries queued before the garde existed. */
+  service?: SchoolService;
   studentId: string;
   selection: CanteenSelection;
   date: string;
@@ -149,6 +175,8 @@ export type CanteenPaymentResult =
   | { ok: false; error: string };
 
 export async function persistCanteenPayment(schoolId: string, input: CanteenPaymentInput): Promise<CanteenPaymentResult> {
+  const service = parseService(input.service);
+  const info = serviceInfo(service);
   if (input.clientRef) {
     const already = await prisma.canteenPayment.findFirst({
       where: { schoolId, clientRef: input.clientRef },
@@ -157,7 +185,7 @@ export async function persistCanteenPayment(schoolId: string, input: CanteenPaym
     if (already) return { ok: true, paymentId: already.id, ...already, whatsappUrl: null };
   }
 
-  const ctx = await canteenContext(schoolId);
+  const ctx = await canteenContext(schoolId, service);
   if ("error" in ctx) return { ok: false, error: ctx.error! };
   const { year, plan } = ctx;
 
@@ -179,15 +207,18 @@ export async function persistCanteenPayment(schoolId: string, input: CanteenPaym
     // Read the student's months inside the transaction: two counters paying
     // the same month at the same moment must not both go through.
     const [enrollments, payments, skips] = await Promise.all([
-      tx.canteenEnrollment.findMany({ where: { schoolId, studentId: student.id, academicYearId: year.id } }),
+      tx.canteenEnrollment.findMany({ where: { schoolId, studentId: student.id, academicYearId: year.id, service } }),
       tx.canteenPayment.findMany({
-        where: { schoolId, studentId: student.id, academicYearId: year.id },
+        where: { schoolId, studentId: student.id, academicYearId: year.id, service },
         include: { months: true },
       }),
-      tx.canteenSkip.findMany({ where: { studentId: student.id, academicYearId: year.id }, select: { month: true } }),
+      tx.canteenSkip.findMany({
+        where: { studentId: student.id, academicYearId: year.id, service },
+        select: { month: true },
+      }),
     ]);
     if (enrollments.length === 0) {
-      return { ok: false as const, error: `${student.firstName} ${student.lastName} n'est pas inscrit(e) à la cantine.` };
+      return { ok: false as const, error: `${student.firstName} ${student.lastName} n'est pas inscrit(e) à ${info.the}.` };
     }
     const quote = quoteCanteenPayment(plan, enrollments, payments, selection, skips.map((k) => k.month));
     if (!quote.ok) return quote;
@@ -201,6 +232,7 @@ export async function persistCanteenPayment(schoolId: string, input: CanteenPaym
         schoolId,
         studentId: student.id,
         academicYearId: year.id,
+        service,
         amount: quote.amount,
         label: quote.label,
         method: input.method || "cash",
@@ -217,6 +249,7 @@ export async function persistCanteenPayment(schoolId: string, input: CanteenPaym
       schoolId,
       studentId: student.id,
       academicYearId: year.id,
+      service,
       kind: "payment",
       data: { paymentId: payment.id },
       label: `Paiement ${formatCFA(payment.amount)} · ${payment.label} · reçu N° ${String(payment.receiptNumber).padStart(4, "0")}`,
@@ -238,6 +271,7 @@ export async function persistCanteenPayment(schoolId: string, input: CanteenPaym
     whatsappUrl = buildWhatsAppLink(
       student.parentPhone,
       canteenConfirmationMessage({
+        service,
         amount: result.amount,
         label: result.label,
         studentFirstName: student.firstName,
@@ -261,32 +295,29 @@ export async function persistCanteenPayment(schoolId: string, input: CanteenPaym
   };
 }
 
-/** What a canteen receipt shows, or null when it is not this school's. */
+/** What a canteen (or garde) receipt shows, or null when it is not this school's. */
 export async function canteenReceipt(schoolId: string, paymentId: string) {
   const payment = await prisma.canteenPayment.findFirst({
     where: { id: paymentId, schoolId },
     include: { student: { include: { class: { select: { name: true } } } } },
   });
   if (!payment) return null;
+  const service = parseService(payment.service);
+  const own = { schoolId, studentId: payment.studentId, academicYearId: payment.academicYearId, service };
 
   const [enrollments, payments, plan, skips] = await Promise.all([
-    prisma.canteenEnrollment.findMany({
-      where: { schoolId, studentId: payment.studentId, academicYearId: payment.academicYearId },
-    }),
-    prisma.canteenPayment.findMany({
-      where: { schoolId, studentId: payment.studentId, academicYearId: payment.academicYearId },
-      include: { months: true },
-    }),
-    planFor(schoolId, payment.academicYearId),
+    prisma.canteenEnrollment.findMany({ where: own }),
+    prisma.canteenPayment.findMany({ where: own, include: { months: true } }),
+    planFor(schoolId, payment.academicYearId, service),
     prisma.canteenSkip.findMany({
-      where: { studentId: payment.studentId, academicYearId: payment.academicYearId },
+      where: { studentId: payment.studentId, academicYearId: payment.academicYearId, service },
       select: { month: true },
     }),
   ]);
   const remaining = plan
     ? canteenSummary(plan, enrollments, payments, new Date(), skips.map((k) => k.month)).remainingAmount
     : 0;
-  return { payment, remaining };
+  return { payment, service, remaining };
 }
 
 // ---------------------------------------------------------------------------
@@ -299,14 +330,22 @@ export type CanteenActionKind = "payment" | "enroll" | "leave" | "skip" | "start
 
 async function recordAction(
   db: Db,
-  action: { schoolId: string; studentId: string; academicYearId: string; kind: CanteenActionKind; data: object; label: string }
+  action: {
+    schoolId: string;
+    studentId: string;
+    academicYearId: string;
+    service: SchoolService;
+    kind: CanteenActionKind;
+    data: object;
+    label: string;
+  }
 ) {
   await db.canteenAction.create({ data: { ...action, data: JSON.stringify(action.data) } });
 }
 
 /** A paid month of a student's year — cancelled payments settle nothing. */
-function paidMonthWhere(schoolId: string, studentId: string, academicYearId: string) {
-  return { payment: { schoolId, studentId, academicYearId, cancelledAt: null } };
+function paidMonthWhere(schoolId: string, studentId: string, academicYearId: string, service: SchoolService) {
+  return { payment: { schoolId, studentId, academicYearId, service, cancelledAt: null } };
 }
 
 // ---------------------------------------------------------------------------
@@ -316,45 +355,58 @@ function paidMonthWhere(schoolId: string, studentId: string, academicYearId: str
 export type CanteenWriteResult = { ok: true } | { ok: false; error: string };
 
 /**
- * Starts a stretch at the canteen. Safe to receive twice: a student already
+ * Starts a stretch in the service. Safe to receive twice: a student already
  * enrolled stays as they are. A student who left can come back — the new
- * stretch begins after the previous one ended.
+ * stretch begins after the previous one ended. The garde only takes the
+ * pupils of maternelle and primaire classes.
  */
 export async function enrollInCanteen(
   schoolId: string,
   studentId: string,
-  startMonth?: string | null
+  startMonth?: string | null,
+  service: SchoolService = "canteen"
 ): Promise<CanteenWriteResult> {
-  const ctx = await canteenContext(schoolId);
+  const info = serviceInfo(service);
+  const ctx = await canteenContext(schoolId, service);
   if ("error" in ctx) return { ok: false, error: ctx.error! };
   const { year, plan } = ctx;
 
-  const student = await prisma.student.findFirst({ where: { id: studentId, schoolId }, select: { id: true, status: true } });
+  const student = await prisma.student.findFirst({
+    where: { id: studentId, schoolId },
+    select: { id: true, status: true, firstName: true, lastName: true, class: { select: { level: true } } },
+  });
   if (!student) return { ok: false, error: "Élève introuvable." };
-  if (student.status !== "active") return { ok: false, error: "Seul un élève actif peut être inscrit à la cantine." };
+  if (student.status !== "active") return { ok: false, error: `Seul un élève actif peut être inscrit à ${info.the}.` };
 
   const enrollments = await prisma.canteenEnrollment.findMany({
-    where: { schoolId, studentId, academicYearId: year.id },
+    where: { schoolId, studentId, academicYearId: year.id, service },
     orderBy: { startMonth: "asc" },
   });
   if (openEnrollment(enrollments)) return { ok: true };
+  if (!levelAllowed(service, student.class.level)) {
+    return {
+      ok: false,
+      error: `${capitalize(info.the)} est réservée aux élèves de maternelle et du primaire (${student.firstName} ${student.lastName} est en ${student.class.level.toLowerCase()}).`,
+    };
+  }
 
   let start = isMonthKey(startMonth) ? startMonth : monthKey(new Date());
   if (start < plan.firstMonth) start = plan.firstMonth;
   const lastEnd = enrollments.reduce<string | null>((max, e) => (e.endMonth && (!max || e.endMonth > max) ? e.endMonth : max), null);
   if (lastEnd && start <= lastEnd) start = addMonths(lastEnd, 1);
   if (start > plan.lastMonth) {
-    return { ok: false, error: `La cantine de cette année se termine en ${monthLabel(plan.lastMonth)}.` };
+    return { ok: false, error: `${capitalize(info.the)} de cette année se termine en ${monthLabel(plan.lastMonth)}.` };
   }
 
   await prisma.$transaction(async (tx) => {
     const created = await tx.canteenEnrollment.create({
-      data: { schoolId, studentId, academicYearId: year.id, startMonth: start },
+      data: { schoolId, studentId, academicYearId: year.id, service, startMonth: start },
     });
     await recordAction(tx, {
       schoolId,
       studentId,
       academicYearId: year.id,
+      service,
       kind: "enroll",
       data: { enrollmentId: created.id },
       label: `${enrollments.length ? "Réinscription" : "Inscription"} dès ${monthLabel(start)}`,
@@ -364,21 +416,28 @@ export async function enrollInCanteen(
 }
 
 /**
- * Ends a student's stretch at the canteen after `endMonth`, the last month they
- * eat there. A month already paid cannot be left behind: the school refunds it
+ * Ends a student's stretch in the service after `endMonth`, the last month
+ * they come. A month already paid cannot be left behind: the school refunds it
  * first, by hand. Ending before the stretch began cancels it altogether.
  */
-export async function leaveCanteen(schoolId: string, studentId: string, endMonth: string): Promise<CanteenWriteResult> {
+export async function leaveCanteen(
+  schoolId: string,
+  studentId: string,
+  endMonth: string,
+  service: SchoolService = "canteen"
+): Promise<CanteenWriteResult> {
   if (!isMonthKey(endMonth)) return { ok: false, error: "Mois invalide." };
   const year = await currentAcademicYear(schoolId);
   if (!year) return { ok: false, error: "Aucune année scolaire active." };
 
-  const enrollments = await prisma.canteenEnrollment.findMany({ where: { schoolId, studentId, academicYearId: year.id } });
+  const enrollments = await prisma.canteenEnrollment.findMany({
+    where: { schoolId, studentId, academicYearId: year.id, service },
+  });
   const open = openEnrollment(enrollments);
   if (!open) return { ok: true }; // already out — a replayed entry
 
   const paidAfter = await prisma.canteenPaymentMonth.findMany({
-    where: { month: { gt: endMonth, gte: open.startMonth }, ...paidMonthWhere(schoolId, studentId, year.id) },
+    where: { month: { gt: endMonth, gte: open.startMonth }, ...paidMonthWhere(schoolId, studentId, year.id, service) },
     select: { month: true },
   });
   if (paidAfter.length > 0) {
@@ -397,9 +456,10 @@ export async function leaveCanteen(schoolId: string, studentId: string, endMonth
       schoolId,
       studentId,
       academicYearId: year.id,
+      service,
       kind: "leave",
       data: { enrollmentId: open.id, startMonth: open.startMonth, endMonth, cancelled },
-      label: cancelled ? "Inscription annulée" : `Sortie de la cantine après ${monthLabel(endMonth)}`,
+      label: cancelled ? "Inscription annulée" : `Sortie de ${serviceInfo(service).the} après ${monthLabel(endMonth)}`,
     });
   });
   return { ok: true };
@@ -414,21 +474,25 @@ export async function changeCanteenStart(
   schoolId: string,
   studentId: string,
   startMonth: string,
-  options: { record?: boolean } = {}
+  options: { record?: boolean; service?: SchoolService } = {}
 ): Promise<CanteenWriteResult> {
+  const service = options.service ?? "canteen";
+  const info = serviceInfo(service);
   if (!isMonthKey(startMonth)) return { ok: false, error: "Mois invalide." };
   const year = await currentAcademicYear(schoolId);
   if (!year) return { ok: false, error: "Aucune année scolaire active." };
-  const plan = await planFor(schoolId, year.id);
-  if (!plan) return { ok: false, error: "Les tarifs de la cantine ne sont pas encore réglés pour cette année." };
+  const plan = await planFor(schoolId, year.id, service);
+  if (!plan) return { ok: false, error: `Les tarifs de ${info.the} ne sont pas encore réglés pour cette année.` };
 
-  const enrollments = await prisma.canteenEnrollment.findMany({ where: { schoolId, studentId, academicYearId: year.id } });
+  const enrollments = await prisma.canteenEnrollment.findMany({
+    where: { schoolId, studentId, academicYearId: year.id, service },
+  });
   const current = openEnrollment(enrollments);
-  if (!current) return { ok: false, error: "Cet élève n'est pas inscrit à la cantine en ce moment." };
+  if (!current) return { ok: false, error: `Cet élève n'est pas inscrit à ${info.the} en ce moment.` };
   if (current.startMonth === startMonth) return { ok: true };
 
   if (startMonth < plan.firstMonth || startMonth > plan.lastMonth) {
-    return { ok: false, error: `La cantine va de ${monthLabel(plan.firstMonth)} à ${monthLabel(plan.lastMonth)}.` };
+    return { ok: false, error: `${capitalize(info.the)} va de ${monthLabel(plan.firstMonth)} à ${monthLabel(plan.lastMonth)}.` };
   }
   const previousEnd = enrollments
     .filter((e) => e.id !== current.id && e.endMonth)
@@ -438,7 +502,7 @@ export async function changeCanteenStart(
   }
   if (startMonth > current.startMonth) {
     const paidBefore = await prisma.canteenPaymentMonth.findFirst({
-      where: { month: { gte: current.startMonth, lt: startMonth }, ...paidMonthWhere(schoolId, studentId, year.id) },
+      where: { month: { gte: current.startMonth, lt: startMonth }, ...paidMonthWhere(schoolId, studentId, year.id, service) },
       select: { month: true },
     });
     if (paidBefore) {
@@ -453,9 +517,10 @@ export async function changeCanteenStart(
         schoolId,
         studentId,
         academicYearId: year.id,
+        service,
         kind: "start",
         data: { enrollmentId: current.id, from: current.startMonth, to: startMonth },
-        label: `Début de cantine : ${monthLabel(current.startMonth)} → ${monthLabel(startMonth)}`,
+        label: `Début de ${info.noun} : ${monthLabel(current.startMonth)} → ${monthLabel(startMonth)}`,
       });
     }
   });
@@ -463,67 +528,73 @@ export async function changeCanteenStart(
 }
 
 /**
- * Marks a month "sans cantine" for a student, or takes the mark off. Setting
- * the state it already has changes nothing, so a replayed entry is harmless.
- * A paid month cannot be marked: it was eaten, or the school refunds it first.
+ * Marks a month "sans cantine" (or "sans garde") for a student, or takes the
+ * mark off. Setting the state it already has changes nothing, so a replayed
+ * entry is harmless. A paid month cannot be marked: the school refunds it first.
  */
 export async function setCanteenSkip(
   schoolId: string,
   studentId: string,
   month: string,
   skipped: boolean,
-  options: { record?: boolean } = {}
+  options: { record?: boolean; service?: SchoolService } = {}
 ): Promise<CanteenWriteResult> {
+  const service = options.service ?? "canteen";
+  const info = serviceInfo(service);
   if (!isMonthKey(month)) return { ok: false, error: "Mois invalide." };
   const year = await currentAcademicYear(schoolId);
   if (!year) return { ok: false, error: "Aucune année scolaire active." };
   const record = options.record !== false;
-  const existing = await prisma.canteenSkip.findUnique({
-    where: { studentId_academicYearId_month: { studentId, academicYearId: year.id, month } },
+  const existing = await prisma.canteenSkip.findMany({
+    where: { studentId, academicYearId: year.id, month, service },
     select: { id: true },
   });
 
   if (!skipped) {
-    if (!existing) return { ok: true };
+    if (existing.length === 0) return { ok: true };
     await prisma.$transaction(async (tx) => {
-      await tx.canteenSkip.delete({ where: { id: existing.id } });
+      await tx.canteenSkip.deleteMany({ where: { id: { in: existing.map((k) => k.id) } } });
       if (record) {
         await recordAction(tx, {
           schoolId,
           studentId,
           academicYearId: year.id,
+          service,
           kind: "skip",
           data: { month, skipped: false },
-          label: `${capitalize(monthLabel(month))} remis à la cantine`,
+          label: `${capitalize(monthLabel(month))} remis à ${info.the}`,
         });
       }
     });
     return { ok: true };
   }
 
-  if (existing) return { ok: true };
-  const plan = await planFor(schoolId, year.id);
-  if (!plan) return { ok: false, error: "Les tarifs de la cantine ne sont pas encore réglés pour cette année." };
-  const enrollments = await prisma.canteenEnrollment.findMany({ where: { schoolId, studentId, academicYearId: year.id } });
+  if (existing.length > 0) return { ok: true };
+  const plan = await planFor(schoolId, year.id, service);
+  if (!plan) return { ok: false, error: `Les tarifs de ${info.the} ne sont pas encore réglés pour cette année.` };
+  const enrollments = await prisma.canteenEnrollment.findMany({
+    where: { schoolId, studentId, academicYearId: year.id, service },
+  });
   if (!enrolledMonths(plan, enrollments).includes(month)) {
     return { ok: false, error: `${capitalize(monthLabel(month))} ne fait pas partie de l'inscription de cet élève.` };
   }
   const paid = await prisma.canteenPaymentMonth.findFirst({
-    where: { month, ...paidMonthWhere(schoolId, studentId, year.id) },
+    where: { month, ...paidMonthWhere(schoolId, studentId, year.id, service) },
     select: { id: true },
   });
   if (paid) return { ok: false, error: `${capitalize(monthLabel(month))} est déjà payé.` };
 
   await prisma.$transaction(async (tx) => {
-    await tx.canteenSkip.create({ data: { schoolId, studentId, academicYearId: year.id, month } });
+    await tx.canteenSkip.create({ data: { schoolId, studentId, academicYearId: year.id, service, month } });
     if (record) {
       await recordAction(tx, {
         schoolId,
         studentId,
         academicYearId: year.id,
+        service,
         kind: "skip",
         data: { month, skipped: true },
-        label: `${capitalize(monthLabel(month))} sans cantine`,
+        label: `${capitalize(monthLabel(month))} ${info.without}`,
       });
     }
   });
@@ -531,10 +602,10 @@ export async function setCanteenSkip(
 }
 
 /**
- * Puts a student's canteen back the way it was before one action. Allowed the
- * day the action was made. When a later change depends on it (a payment on
- * the months of an enrolment), that change must be undone first — the message
- * says which.
+ * Puts a student's canteen (or garde) back the way it was before one action.
+ * Allowed the day the action was made. When a later change depends on it (a
+ * payment on the months of an enrolment), that change must be undone first —
+ * the message says which.
  */
 export async function undoCanteenAction(schoolId: string, actionId: string, reason?: string): Promise<CanteenWriteResult> {
   const action = await prisma.canteenAction.findFirst({ where: { id: actionId, schoolId } });
@@ -546,6 +617,7 @@ export async function undoCanteenAction(schoolId: string, actionId: string, reas
 
   const data = JSON.parse(action.data) as Record<string, unknown>;
   const { studentId, academicYearId } = action;
+  const service = parseService(action.service);
   const why = reason?.trim() || null;
   let result: CanteenWriteResult = { ok: true };
 
@@ -568,7 +640,7 @@ export async function undoCanteenAction(schoolId: string, actionId: string, reas
         ? { gte: enrollment.startMonth, lte: enrollment.endMonth }
         : { gte: enrollment.startMonth };
       const paid = await prisma.canteenPaymentMonth.findFirst({
-        where: { month: months, ...paidMonthWhere(schoolId, studentId, academicYearId) },
+        where: { month: months, ...paidMonthWhere(schoolId, studentId, academicYearId, service) },
         include: { payment: { select: { receiptNumber: true } } },
       });
       if (paid) {
@@ -579,7 +651,7 @@ export async function undoCanteenAction(schoolId: string, actionId: string, reas
         break;
       }
       await prisma.$transaction([
-        prisma.canteenSkip.deleteMany({ where: { studentId, academicYearId, month: months } }),
+        prisma.canteenSkip.deleteMany({ where: { studentId, academicYearId, service, month: months } }),
         prisma.canteenEnrollment.delete({ where: { id: enrollment.id } }),
       ]);
       break;
@@ -588,7 +660,7 @@ export async function undoCanteenAction(schoolId: string, actionId: string, reas
     case "leave": {
       const startMonth = String(data.startMonth);
       const others = (
-        await prisma.canteenEnrollment.findMany({ where: { schoolId, studentId, academicYearId } })
+        await prisma.canteenEnrollment.findMany({ where: { schoolId, studentId, academicYearId, service } })
       ).filter((e) => e.id !== data.enrollmentId);
       // Re-enrolled since: that new stretch would overlap the one put back.
       const later = others.find((e) => e.startMonth >= startMonth || e.endMonth == null);
@@ -600,7 +672,7 @@ export async function undoCanteenAction(schoolId: string, actionId: string, reas
         break;
       }
       if (data.cancelled) {
-        await prisma.canteenEnrollment.create({ data: { schoolId, studentId, academicYearId, startMonth } });
+        await prisma.canteenEnrollment.create({ data: { schoolId, studentId, academicYearId, service, startMonth } });
       } else {
         const reopened = await prisma.canteenEnrollment.updateMany({
           where: { id: String(data.enrollmentId), schoolId },
@@ -614,11 +686,11 @@ export async function undoCanteenAction(schoolId: string, actionId: string, reas
     }
 
     case "skip":
-      result = await setCanteenSkip(schoolId, studentId, String(data.month), !data.skipped, { record: false });
+      result = await setCanteenSkip(schoolId, studentId, String(data.month), !data.skipped, { record: false, service });
       break;
 
     case "start":
-      result = await changeCanteenStart(schoolId, studentId, String(data.from), { record: false });
+      result = await changeCanteenStart(schoolId, studentId, String(data.from), { record: false, service });
       break;
   }
 
@@ -627,7 +699,12 @@ export async function undoCanteenAction(schoolId: string, actionId: string, reas
   return { ok: true };
 }
 
-export async function recordCanteenReminder(schoolId: string, studentId: string, message: string) {
-  const reminder = await prisma.canteenReminder.create({ data: { schoolId, studentId, message } });
+export async function recordCanteenReminder(
+  schoolId: string,
+  studentId: string,
+  message: string,
+  service: SchoolService = "canteen"
+) {
+  const reminder = await prisma.canteenReminder.create({ data: { schoolId, studentId, message, service } });
   return { ok: true as const, reminderId: reminder.id };
 }

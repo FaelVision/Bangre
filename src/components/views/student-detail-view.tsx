@@ -44,11 +44,14 @@ export type StudentDetailData = {
 export function StudentDetailView({
   data,
   canteen = null,
+  daycare = null,
   offline = false,
 }: {
   data: StudentDetailData;
   /** The canteen card, when the school runs a canteen. */
   canteen?: CanteenStudentCard | null;
+  /** The garde d'enfants card, when the school runs it and the pupil's class may take it. */
+  daycare?: CanteenStudentCard | null;
   offline?: boolean;
 }) {
   const { student, summary } = data;
@@ -171,6 +174,9 @@ export function StudentDetailView({
             </Card>
           )}
 
+          {daycare && (
+            <StudentCanteenCard card={daycare} student={{ id: student.id, label: `${student.lastName} ${student.firstName}` }} />
+          )}
           {canteen && (
             <StudentCanteenCard card={canteen} student={{ id: student.id, label: `${student.lastName} ${student.firstName}` }} />
           )}

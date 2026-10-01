@@ -80,7 +80,7 @@ function UndoModal({
         <p className="text-[12.5px] text-(--color-text-muted) mt-2.5 leading-relaxed">
           {isPayment
             ? "Le reçu reste dans le journal, marqué « Annulé » ; son numéro n'est pas réutilisé. Les mois qu'il couvrait redeviennent dus."
-            : "La cantine de l'élève redevient exactement comme avant cette action."}
+            : "Tout redevient exactement comme avant cette action pour cet élève."}
         </p>
         <label className="block mt-3">
           <span className="block text-[12.5px] font-semibold text-(--color-text-secondary) mb-1.5">

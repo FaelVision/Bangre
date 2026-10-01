@@ -28,6 +28,7 @@ const plan: CanteenPlanWithPackages = {
   id: "plan-1",
   schoolId: "school-1",
   academicYearId: "year-1",
+  service: "canteen",
   monthlyPrice: 5000,
   annualPrice: 40000,
   firstMonth: "2026-10",

@@ -8,17 +8,20 @@ import type { CanteenPaymentContext } from "@/lib/canteen-overview";
 import { loadCanteenPaymentContext, submitCanteenPayment, type CanteenPaymentOutcome } from "@/lib/canteen-client";
 import { DateInput } from "@/components/date-input";
 import { cn } from "@/lib/cn";
+import { serviceInfo, type SchoolService } from "@/lib/services";
 
 /**
- * "Payer la cantine". Opens the canteen payment window for one student, or —
- * from the Cantine page — with a search among the enrolled students first.
+ * "Payer la cantine" (or the garde). Opens the payment window for one student,
+ * or — from the service's page — with a search among the enrolled students first.
  */
 export function CanteenPayButton({
+  service,
   studentId,
   students,
   className,
   children,
 }: {
+  service: SchoolService;
   studentId?: string;
   /** Who the search offers when no student is given. */
   students?: { id: string; label: string }[];
@@ -32,7 +35,12 @@ export function CanteenPayButton({
         {children}
       </button>
       {open && (
-        <CanteenPaymentModal initialStudentId={studentId ?? null} students={students ?? []} onClose={() => setOpen(false)} />
+        <CanteenPaymentModal
+          service={service}
+          initialStudentId={studentId ?? null}
+          students={students ?? []}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );
@@ -42,15 +50,18 @@ const fieldClass =
   "w-full h-[46px] border border-(--color-border-strong) rounded-[10px] px-3.5 text-[14.5px] bg-white focus:outline-none focus:border-(--color-primary)";
 
 function CanteenPaymentModal({
+  service,
   initialStudentId,
   students,
   onClose,
 }: {
+  service: SchoolService;
   initialStudentId: string | null;
   students: { id: string; label: string }[];
   onClose: () => void;
 }) {
   const router = useRouter();
+  const info = serviceInfo(service);
   const [studentId, setStudentId] = useState<string | null>(initialStudentId);
   const [query, setQuery] = useState("");
   const [loaded, setLoaded] = useState<{ context: CanteenPaymentContext; local: boolean } | { error: string } | null>(null);
@@ -68,7 +79,7 @@ function CanteenPaymentModal({
   useEffect(() => {
     if (!studentId) return;
     let cancelled = false;
-    void loadCanteenPaymentContext(studentId).then((res) => {
+    void loadCanteenPaymentContext(studentId, service).then((res) => {
       if (cancelled) return;
       setLoaded(res);
       if ("context" in res) {
@@ -80,7 +91,7 @@ function CanteenPaymentModal({
     return () => {
       cancelled = true;
     };
-  }, [studentId]);
+  }, [studentId, service]);
 
   const context = loaded && "context" in loaded ? loaded.context : null;
   const isLocal = loaded && "context" in loaded ? loaded.local : false;
@@ -144,7 +155,7 @@ function CanteenPaymentModal({
     setError(null);
     startTransition(async () => {
       const res = await submitCanteenPayment(
-        { studentId: context.student.id, selection, date, method, receivedBy, notifyWhatsapp },
+        { service, studentId: context.student.id, selection, date, method, receivedBy, notifyWhatsapp },
         {
           amount: quote.amount,
           label: quote.label,
@@ -172,7 +183,7 @@ function CanteenPaymentModal({
         <div className="lg:flex-[1.3] lg:min-w-[420px] w-full min-h-[100dvh] sm:min-h-0 bg-(--color-bg-app) rounded-none sm:rounded-[18px] shadow-2xl overflow-hidden">
           <div className="px-4 sm:px-5.5 py-4 border-b border-(--color-border) flex items-center sticky top-0 bg-(--color-bg-app) z-10">
             <div className="min-w-0">
-              <div className="text-[18px] font-semibold tracking-tight">Paiement de la cantine</div>
+              <div className="text-[18px] font-semibold tracking-tight">Paiement de {info.the}</div>
               {context && (
                 <div className="text-[13px] text-(--color-text-muted) mt-0.5 truncate">
                   {context.student.lastName} {context.student.firstName} · {context.student.className} ·{" "}
@@ -195,7 +206,7 @@ function CanteenPaymentModal({
             {!studentId && (
               <div>
                 <div className="text-[12.5px] font-semibold text-(--color-text-secondary) mb-2">
-                  Rechercher un élève inscrit à la cantine
+                  Rechercher un élève inscrit à {info.the}
                 </div>
                 <input
                   autoFocus
@@ -217,7 +228,8 @@ function CanteenPaymentModal({
                   ))}
                   {query.trim() && matches.length === 0 && (
                     <div className="text-[13px] text-(--color-text-muted) py-2">
-                      Aucun élève inscrit à la cantine ne correspond. Inscrivez-le d&apos;abord depuis l&apos;onglet Cantine.
+                      Aucun élève inscrit à {info.the} ne correspond. Inscrivez-le d&apos;abord depuis l&apos;onglet{" "}
+                      {info.title}.
                     </div>
                   )}
                 </div>
@@ -285,7 +297,7 @@ function CanteenPaymentModal({
                           {paid
                             ? "Payé"
                             : m.status === "skipped"
-                              ? "Sans cantine"
+                              ? capitalize(info.without)
                               : m.status === "late"
                                 ? "En retard"
                                 : m.status === "due"
@@ -437,7 +449,7 @@ function CanteenPaymentModal({
         {context && (
           <div className="w-full lg:w-[300px] lg:flex-1 bg-white rounded-none sm:rounded-[18px] shadow-2xl p-4 sm:p-5.5">
             <div className="text-center border-b border-dashed border-(--color-border-strong) pb-3.5">
-              <div className="text-xs tracking-wider uppercase text-(--color-text-muted)">Reçu · Cantine</div>
+              <div className="text-xs tracking-wider uppercase text-(--color-text-muted)">Reçu · {info.title}</div>
               <div className="text-[15px] font-semibold mt-1.5">{context.schoolName}</div>
               <div className="text-[12.5px] text-(--color-text-muted) mt-0.5 tabular-nums">
                 N° {String(receiptNumber ?? context.nextReceiptNumber).padStart(4, "0")} · {formatDate(date)}

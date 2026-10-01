@@ -28,6 +28,7 @@ export default function NewClassPage() {
           <Field>
             <Label>Niveau</Label>
             <Select name="level" defaultValue="Collège">
+              <option value="Maternelle">Maternelle</option>
               <option value="Primaire">Primaire</option>
               <option value="Collège">Collège</option>
               <option value="Lycée">Lycée</option>

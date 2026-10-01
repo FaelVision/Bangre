@@ -108,6 +108,7 @@ export function PromotionScreen({
           className="h-9 border border-(--color-border-strong) rounded-lg bg-white px-2.5 text-[12.5px] self-start lg:self-auto"
           title="Niveau de la classe cible"
         >
+          <option value="Maternelle">Maternelle</option>
           <option value="Primaire">Primaire</option>
           <option value="Collège">Collège</option>
           <option value="Lycée">Lycée</option>

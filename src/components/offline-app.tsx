@@ -316,7 +316,12 @@ function Screen({
     const detail = studentDetail(data, studentId);
     if (!detail) return <NotInLocalCopy what="Cette fiche élève" />;
     return (
-      <StudentDetailView data={detail} canteen={canteenStudentCard(canteenDataset(data), studentId)} offline />
+      <StudentDetailView
+        data={detail}
+        canteen={canteenStudentCard(canteenDataset(data, "canteen"), studentId)}
+        daycare={canteenStudentCard(canteenDataset(data, "daycare"), studentId)}
+        offline
+      />
     );
   }
 
@@ -366,10 +371,10 @@ function Screen({
     return <PaymentsView data={paymentsOverview(data, page)} offline />;
   }
 
-  // /cantine — enrolments, payments and rappels work offline; the settings wait
+  // /cantine and /garde — enrolments, payments and rappels work offline; the settings wait
   // for the network (OnlineOnly below).
-  if (path === "/cantine") {
-    const ds = canteenDataset(data);
+  if (path === "/cantine" || path === "/garde") {
+    const ds = canteenDataset(data, path === "/garde" ? "daycare" : "canteen");
     return (
       <CanteenView
         data={canteenOverview(ds, {
@@ -469,8 +474,10 @@ function OnlineOnly({ path }: { path: string }) {
       ? "Une nouvelle classe se crée en ligne : ses tranches servent ensuite à tous les encaissements, sur tous les postes."
       : path.startsWith("/abonnement") || path.startsWith("/compte")
         ? "L'abonnement se gère en ligne."
-        : path.startsWith("/cantine/reglages")
-          ? "Les tarifs et les mois de la cantine se règlent en ligne : ils servent ensuite à tous les encaissements, sur tous les postes."
+        : path.startsWith("/options")
+          ? "Les options de l'établissement (cantine, garde d'enfants) s'activent en ligne, pour tous les postes à la fois."
+          : path.startsWith("/cantine/reglages") || path.startsWith("/garde/reglages")
+          ? `Les tarifs et les mois de ${path.startsWith("/garde") ? "la garde" : "la cantine"} se règlent en ligne : ils servent ensuite à tous les encaissements, sur tous les postes.`
           : "Cette page est préparée par le serveur.";
 
   return (
@@ -480,7 +487,7 @@ function OnlineOnly({ path }: { path: string }) {
         <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-1.5">{reason}</p>
         <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-2">
           Tout le reste fonctionne sans réseau : tableau de bord, classes, élèves (ajout, modification, import de
-          liste), encaissements, retards, rappels WhatsApp, journal des paiements et cantine.
+          liste), encaissements, retards, rappels WhatsApp, journal des paiements, cantine et garde.
         </p>
         <Link href="/tableau-de-bord" className="text-[13px] font-semibold text-(--color-primary) mt-3 inline-block">
           Retour au tableau de bord →

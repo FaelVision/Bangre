@@ -25,6 +25,7 @@ import {
   type CanteenPlanWithPackages,
 } from "@/lib/canteen";
 import type { CanteenDataset } from "@/lib/canteen-overview";
+import { levelAllowed, parseService, type SchoolService } from "@/lib/services";
 import type { QueuedEntry } from "@/lib/offline-queue";
 
 /**
@@ -47,6 +48,7 @@ export type MirrorSchool = {
   subscriptionRenewsAt: Date | null;
   blocked: boolean;
   canteenEnabled: boolean;
+  daycareEnabled: boolean;
 };
 
 export type MirrorData = {
@@ -58,9 +60,14 @@ export type MirrorData = {
   payments: PaymentWithAllocations[];
   reminders: Reminder[];
   canteen: MirrorCanteen;
+  /** The garde d'enfants: same shape as the canteen. */
+  daycare: MirrorCanteen;
 };
 
-/** This year's canteen. A snapshot taken before the canteen existed reads as "none". */
+/**
+ * This year's canteen (or garde). A snapshot taken before the service existed
+ * reads as "none".
+ */
 export type MirrorCanteen = {
   plan: CanteenPlanWithPackages | null;
   enrollments: CanteenEnrollment[];
@@ -92,13 +99,16 @@ type RawSnapshot = {
   students: Record<string, unknown>[];
   payments: Record<string, unknown>[];
   reminders: Record<string, unknown>[];
-  canteen?: {
-    plan: Record<string, unknown> | null;
-    enrollments: Record<string, unknown>[];
-    payments: Record<string, unknown>[];
-    reminders: Record<string, unknown>[];
-    skips?: Record<string, unknown>[];
-  };
+  canteen?: RawService;
+  daycare?: RawService;
+};
+
+type RawService = {
+  plan: Record<string, unknown> | null;
+  enrollments: Record<string, unknown>[];
+  payments: Record<string, unknown>[];
+  reminders: Record<string, unknown>[];
+  skips?: Record<string, unknown>[];
 };
 
 /**
@@ -115,6 +125,7 @@ export function reviveSnapshot(raw: unknown): MirrorData {
       ...(snapshot.school as unknown as MirrorSchool),
       subscriptionRenewsAt: optionalDate(snapshot.school.subscriptionRenewsAt),
       canteenEnabled: snapshot.school.canteenEnabled === true,
+      daycareEnabled: snapshot.school.daycareEnabled === true,
     },
     academicYear: snapshot.academicYear,
     classes: snapshot.classes.map((c) => ({
@@ -140,10 +151,11 @@ export function reviveSnapshot(raw: unknown): MirrorData {
       sentAt: date(r.sentAt),
     })),
     canteen: reviveCanteen(snapshot.canteen),
+    daycare: reviveCanteen(snapshot.daycare),
   };
 }
 
-function reviveCanteen(raw: RawSnapshot["canteen"]): MirrorCanteen {
+function reviveCanteen(raw: RawService | undefined): MirrorCanteen {
   if (!raw) return { plan: null, enrollments: [], payments: [], reminders: [], skips: [] };
   return {
     plan: raw.plan
@@ -164,27 +176,41 @@ function reviveCanteen(raw: RawSnapshot["canteen"]): MirrorCanteen {
   };
 }
 
-/** The canteen screens' input, read from the device copy. */
-export function canteenDataset(data: MirrorData): CanteenDataset {
+/** The rows of one service in the device copy. */
+export function serviceBox(data: Pick<MirrorData, "canteen" | "daycare">, service: SchoolService | undefined) {
+  return service === "daycare" ? data.daycare : data.canteen;
+}
+
+function serviceEnabled(data: Pick<MirrorData, "school">, service: SchoolService | undefined) {
+  return service === "daycare" ? data.school.daycareEnabled : data.school.canteenEnabled;
+}
+
+/** The canteen (or garde) screens' input, read from the device copy. */
+export function canteenDataset(data: MirrorData, service: SchoolService = "canteen"): CanteenDataset {
   const classById = new Map(data.classes.map((c) => [c.id, c]));
+  const box = serviceBox(data, service);
   return {
-    enabled: data.school.canteenEnabled,
+    service,
+    enabled: serviceEnabled(data, service),
     schoolName: data.school.name,
     contactName: data.school.contactName,
     receiptCounter: data.school.receiptCounter,
     yearLabel: data.academicYear?.label ?? "",
-    plan: data.canteen.plan,
+    plan: box.plan,
     students: data.students
       .filter((s) => classById.has(s.classId))
-      .map((s) => ({ ...s, class: { name: classById.get(s.classId)!.name } })),
+      .map((s) => {
+        const clazz = classById.get(s.classId)!;
+        return { ...s, class: { name: clazz.name, level: clazz.level } };
+      }),
     classes: data.classes
       .filter((c) => !c.archived)
       .sort((a, b) => a.order - b.order)
-      .map((c) => ({ id: c.id, name: c.name })),
-    enrollments: data.canteen.enrollments,
-    payments: data.canteen.payments,
-    reminders: data.canteen.reminders,
-    skips: data.canteen.skips,
+      .map((c) => ({ id: c.id, name: c.name, level: c.level })),
+    enrollments: box.enrollments,
+    payments: box.payments,
+    reminders: box.reminders,
+    skips: box.skips,
     // The history lives on the server: undoing an action is done online.
     actions: null,
   };
@@ -223,6 +249,16 @@ export function findStudentWithPayments(data: MirrorData, studentId: string): St
   };
 }
 
+function copyBox(box: MirrorCanteen): MirrorCanteen {
+  return {
+    ...box,
+    enrollments: box.enrollments.slice(),
+    payments: box.payments.slice(),
+    reminders: box.reminders.slice(),
+    skips: box.skips.slice(),
+  };
+}
+
 /**
  * Folds the outbox into the local copy, so a payment taken at the counter shows
  * up on the dashboard, in the class total and on the student file immediately —
@@ -244,13 +280,8 @@ export function applyPendingOperations(
     students: data.students.slice(),
     payments: data.payments.slice(),
     reminders: data.reminders.slice(),
-    canteen: {
-      ...data.canteen,
-      enrollments: data.canteen.enrollments.slice(),
-      payments: data.canteen.payments.slice(),
-      reminders: data.canteen.reminders.slice(),
-      skips: data.canteen.skips.slice(),
-    },
+    canteen: copyBox(data.canteen),
+    daycare: copyBox(data.daycare),
   };
 
   const mine = entries.filter(
@@ -338,26 +369,29 @@ export function applyPendingOperations(
         break;
       }
 
-      // The canteen entries mirror `canteen-core.ts`: same checks, so what the
-      // device shows is what the server will record at sync time.
+      // The canteen (and garde) entries mirror `canteen-core.ts`: same checks,
+      // so what the device shows is what the server will record at sync time.
       case "canteen.payment": {
-        const plan = result.canteen.plan;
+        const service = parseService(entry.payload.service);
+        const box = serviceBox(result, service);
+        const plan = box.plan;
         const studentId = entry.payload.studentId;
-        if (!plan || !result.school.canteenEnabled) break;
+        if (!plan || !serviceEnabled(result, service)) break;
         const quote = quoteCanteenPayment(
           plan,
-          result.canteen.enrollments.filter((e) => e.studentId === studentId),
-          result.canteen.payments.filter((p) => p.studentId === studentId),
+          box.enrollments.filter((e) => e.studentId === studentId),
+          box.payments.filter((p) => p.studentId === studentId),
           entry.payload.selection,
-          result.canteen.skips.filter((k) => k.studentId === studentId).map((k) => k.month)
+          box.skips.filter((k) => k.studentId === studentId).map((k) => k.month)
         );
         if (!quote.ok) break;
         const paymentId = `${LOCAL_ID_PREFIX}${entry.id}`;
-        result.canteen.payments.unshift({
+        box.payments.unshift({
           id: paymentId,
           schoolId: data.school.id,
           studentId,
           academicYearId: plan.academicYearId,
+          service,
           amount: quote.amount,
           label: quote.label,
           method: entry.payload.method || "cash",
@@ -376,9 +410,14 @@ export function applyPendingOperations(
       }
 
       case "canteen.enroll": {
-        const plan = result.canteen.plan;
-        if (!plan || !result.school.canteenEnabled) break;
-        const mineEnrollments = result.canteen.enrollments.filter((e) => e.studentId === entry.studentId);
+        const service = parseService(entry.service);
+        const box = serviceBox(result, service);
+        const plan = box.plan;
+        if (!plan || !serviceEnabled(result, service)) break;
+        const student = result.students.find((s) => s.id === entry.studentId);
+        const level = result.classes.find((c) => c.id === student?.classId)?.level;
+        if (!levelAllowed(service, level)) break;
+        const mineEnrollments = box.enrollments.filter((e) => e.studentId === entry.studentId);
         if (openEnrollment(mineEnrollments)) break;
         let start = isMonthKey(entry.startMonth) ? entry.startMonth : monthKey(new Date(entry.createdAt));
         if (start < plan.firstMonth) start = plan.firstMonth;
@@ -388,11 +427,12 @@ export function applyPendingOperations(
         );
         if (lastEnd && start <= lastEnd) start = addMonths(lastEnd, 1);
         if (start > plan.lastMonth) break;
-        result.canteen.enrollments.push({
+        box.enrollments.push({
           id: `${LOCAL_ID_PREFIX}${entry.id}`,
           schoolId: data.school.id,
           studentId: entry.studentId,
           academicYearId: plan.academicYearId,
+          service,
           startMonth: start,
           endMonth: null,
           createdAt: new Date(entry.createdAt),
@@ -401,41 +441,45 @@ export function applyPendingOperations(
       }
 
       case "canteen.leave": {
-        const index = result.canteen.enrollments.findIndex((e) => e.studentId === entry.studentId && e.endMonth == null);
+        const box = serviceBox(result, entry.service);
+        const index = box.enrollments.findIndex((e) => e.studentId === entry.studentId && e.endMonth == null);
         if (index === -1) break;
-        const open = result.canteen.enrollments[index];
-        const paidAfter = result.canteen.payments.some(
+        const open = box.enrollments[index];
+        const paidAfter = box.payments.some(
           (p) =>
             p.studentId === entry.studentId &&
             p.months.some((m) => m.month > entry.endMonth && m.month >= open.startMonth)
         );
         if (paidAfter) break;
-        if (entry.endMonth < open.startMonth) result.canteen.enrollments.splice(index, 1);
-        else result.canteen.enrollments[index] = { ...open, endMonth: entry.endMonth };
+        if (entry.endMonth < open.startMonth) box.enrollments.splice(index, 1);
+        else box.enrollments[index] = { ...open, endMonth: entry.endMonth };
         break;
       }
 
       case "canteen.skip": {
-        const plan = result.canteen.plan;
-        const index = result.canteen.skips.findIndex((k) => k.studentId === entry.studentId && k.month === entry.month);
+        const service = parseService(entry.service);
+        const box = serviceBox(result, service);
+        const plan = box.plan;
+        const index = box.skips.findIndex((k) => k.studentId === entry.studentId && k.month === entry.month);
         if (!entry.skipped) {
-          if (index !== -1) result.canteen.skips.splice(index, 1);
+          if (index !== -1) box.skips.splice(index, 1);
           break;
         }
         if (!plan || index !== -1) break;
         const enrolled = enrolledMonths(
           plan,
-          result.canteen.enrollments.filter((e) => e.studentId === entry.studentId)
+          box.enrollments.filter((e) => e.studentId === entry.studentId)
         ).includes(entry.month);
-        const paid = result.canteen.payments.some(
+        const paid = box.payments.some(
           (p) => p.studentId === entry.studentId && p.months.some((m) => m.month === entry.month)
         );
         if (!enrolled || paid) break;
-        result.canteen.skips.push({
+        box.skips.push({
           id: `${LOCAL_ID_PREFIX}${entry.id}`,
           schoolId: data.school.id,
           studentId: entry.studentId,
           academicYearId: plan.academicYearId,
+          service,
           month: entry.month,
           createdAt: new Date(entry.createdAt),
         });
@@ -443,10 +487,11 @@ export function applyPendingOperations(
       }
 
       case "canteen.reminder": {
-        result.canteen.reminders.unshift({
+        serviceBox(result, entry.service).reminders.unshift({
           id: `${LOCAL_ID_PREFIX}${entry.id}`,
           schoolId: data.school.id,
           studentId: entry.studentId,
+          service: parseService(entry.service),
           message: entry.message,
           sentAt: new Date(entry.createdAt),
         });

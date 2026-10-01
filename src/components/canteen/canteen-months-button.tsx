@@ -5,27 +5,33 @@ import { useRouter } from "next/navigation";
 import { capitalize, monthKey, monthLabel, monthRange, monthShortLabel, type CanteenMonthStatus } from "@/lib/canteen";
 import { changeCanteenStart, setCanteenSkip } from "@/lib/canteen-client";
 import { cn } from "@/lib/cn";
+import { serviceInfo, type SchoolService } from "@/lib/services";
 
-const statusText: Record<CanteenMonthStatus, string> = {
-  paid: "Payé",
-  late: "En retard",
-  due: "Ce mois-ci",
-  upcoming: "À venir",
-  skipped: "Sans cantine",
-};
+function statusTexts(service: SchoolService): Record<CanteenMonthStatus, string> {
+  return {
+    paid: "Payé",
+    late: "En retard",
+    due: "Ce mois-ci",
+    upcoming: "À venir",
+    skipped: capitalize(serviceInfo(service).without),
+  };
+}
 
 /**
- * "Mois" — the months a student eats at the canteen. A month they skip (away,
- * sick, the parent said so) is marked "sans cantine": not owed, never late,
- * the student stays enrolled. Before the month or after it, both work.
+ * "Mois" — the months a student eats at the canteen (or is kept by the garde).
+ * A month they skip (away, sick, the parent said so) is marked "sans cantine":
+ * not owed, never late, the student stays enrolled. Before the month or after
+ * it, both work.
  */
 export function CanteenMonthsButton({
+  service,
   student,
   months,
   enrollment,
   className,
   children = "Mois",
 }: {
+  service: SchoolService;
   student: { id: string; label: string };
   months: { month: string; status: CanteenMonthStatus }[];
   /** The stretch running now, whose first month can be corrected. */
@@ -47,18 +53,26 @@ export function CanteenMonthsButton({
         {children}
       </button>
       {open && (
-        <MonthsModal student={student} initial={months} enrollment={enrollment ?? null} onClose={() => setOpen(false)} />
+        <MonthsModal
+          service={service}
+          student={student}
+          initial={months}
+          enrollment={enrollment ?? null}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );
 }
 
 function MonthsModal({
+  service,
   student,
   initial,
   enrollment,
   onClose,
 }: {
+  service: SchoolService;
   student: { id: string; label: string };
   initial: { month: string; status: CanteenMonthStatus }[];
   enrollment: { startMonth: string; firstMonth: string; lastMonth: string } | null;
@@ -74,6 +88,8 @@ function MonthsModal({
   const [queued, setQueued] = useState(false);
   const [changed, setChanged] = useState(false);
   const [, startTransition] = useTransition();
+  const info = serviceInfo(service);
+  const statusText = statusTexts(service);
 
   /**
    * What a month goes back to once "sans cantine" is taken off — near enough
@@ -93,7 +109,7 @@ function MonthsModal({
     setError(null);
     setBusy(month);
     startTransition(async () => {
-      const res = await setCanteenSkip(student, month, skipped);
+      const res = await setCanteenSkip(student, month, skipped, service);
       setBusy(null);
       if (!res.ok) {
         setError(res.error);
@@ -117,7 +133,7 @@ function MonthsModal({
     setError(null);
     setSavingStart(true);
     startTransition(async () => {
-      const res = await changeCanteenStart(student.id, start);
+      const res = await changeCanteenStart(student.id, start, service);
       setSavingStart(false);
       if (!res.ok) {
         setError(res.error);
@@ -139,9 +155,13 @@ function MonthsModal({
       >
         <div className="px-5 py-4 border-b border-(--color-border) flex items-center gap-3">
           <div className="min-w-0">
-            <div className="text-[15.5px] font-semibold">Mois de cantine · {student.label}</div>
+            <div className="text-[15.5px] font-semibold">
+              Mois de {info.noun} · {student.label}
+            </div>
             <div className="text-[12.5px] text-(--color-text-muted) mt-0.5">
-              Touchez un mois où l&apos;enfant ne mange pas à la cantine : il ne sera ni dû ni en retard.
+              {service === "daycare"
+                ? "Touchez un mois où l'enfant n'est pas gardé : il ne sera ni dû ni en retard."
+                : "Touchez un mois où l'enfant ne mange pas à la cantine : il ne sera ni dû ni en retard."}
             </div>
           </div>
           <div className="flex-1" />
@@ -160,7 +180,7 @@ function MonthsModal({
             <div className="flex flex-wrap items-end gap-2 mb-4 pb-4 border-b border-(--color-border)">
               <label className="block flex-1 min-w-[180px]">
                 <span className="block text-[12.5px] font-semibold text-(--color-text-secondary) mb-1.5">
-                  Inscrit à la cantine depuis
+                  Inscrit à {info.the} depuis
                 </span>
                 <select
                   value={start}
@@ -198,8 +218,8 @@ function MonthsModal({
                     paid
                       ? `${capitalize(monthLabel(m.month))} est payé`
                       : skipped
-                        ? `Remettre ${monthLabel(m.month)} à la cantine`
-                        : `Marquer ${monthLabel(m.month)} sans cantine`
+                        ? `Remettre ${monthLabel(m.month)} à ${info.the}`
+                        : `Marquer ${monthLabel(m.month)} ${info.without}`
                   }
                   className={cn(
                     "h-[52px] rounded-[10px] px-2 text-left cursor-pointer disabled:cursor-default",
@@ -229,10 +249,10 @@ function MonthsModal({
 
           <p className="text-[12.5px] text-(--color-text-muted) mt-3 leading-relaxed">
             {skippedCount > 0
-              ? `${skippedCount} mois sans cantine. Touchez-le de nouveau pour le remettre.`
+              ? `${skippedCount} mois ${info.without}. Touchez-le de nouveau pour le remettre.`
               : "Tous les mois de l'inscription sont dus."}{" "}
-            Un mois payé ne peut pas être marqué sans cantine. Le tarif annuel et les forfaits ne s&apos;appliquent
-            plus s&apos;ils comprennent un mois sans cantine.
+            Un mois payé ne peut pas être marqué {info.without}. Le tarif annuel et les forfaits ne
+            s&apos;appliquent plus s&apos;ils comprennent un mois {info.without}.
           </p>
           {queued && (
             <p className="text-[12.5px] text-(--color-gold-text) mt-2">

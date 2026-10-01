@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { decryptSession } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { currentAcademicYear } from "@/lib/canteen-core";
+import { currentAcademicYear, planFor } from "@/lib/canteen-core";
+import type { SchoolService } from "@/lib/services";
 
 /**
  * The whole school, in one payload: what the device keeps so that every screen
@@ -36,6 +37,7 @@ export async function GET(req: NextRequest) {
       subscriptionRenewsAt: true,
       blocked: true,
       canteenEnabled: true,
+      daycareEnabled: true,
     },
   });
   if (!school) return NextResponse.json({ ok: false, error: "Compte introuvable." }, { status: 401 });
@@ -64,24 +66,27 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  // The canteen of the year the device works in — the same year the screens
-  // and `/api/sync` use (`currentAcademicYear`), current or latest.
+  // The canteen and the garde of the year the device works in — the same year
+  // the screens and `/api/sync` use (`currentAcademicYear`), current or latest.
   const canteenYear = academicYear ?? (await currentAcademicYear(schoolId));
   const canteenYearId = canteenYear?.id ?? "";
-  const [canteenPlan, canteenEnrollments, canteenPayments, canteenReminders, canteenSkips] = await Promise.all([
-    prisma.canteenPlan.findUnique({
-      where: { schoolId_academicYearId: { schoolId, academicYearId: canteenYearId } },
-      include: { packages: { orderBy: { order: "asc" } } },
-    }),
-    prisma.canteenEnrollment.findMany({ where: { schoolId, academicYearId: canteenYearId } }),
-    prisma.canteenPayment.findMany({
-      where: { schoolId, academicYearId: canteenYearId },
-      include: { months: true },
-      orderBy: { date: "desc" },
-    }),
-    prisma.canteenReminder.findMany({ where: { schoolId }, orderBy: { sentAt: "desc" }, take: REMINDERS_LIMIT }),
-    prisma.canteenSkip.findMany({ where: { schoolId, academicYearId: canteenYearId } }),
-  ]);
+  const serviceRows = (service: SchoolService) =>
+    Promise.all([
+      planFor(schoolId, canteenYearId, service),
+      prisma.canteenEnrollment.findMany({ where: { schoolId, academicYearId: canteenYearId, service } }),
+      prisma.canteenPayment.findMany({
+        where: { schoolId, academicYearId: canteenYearId, service },
+        include: { months: true },
+        orderBy: { date: "desc" },
+      }),
+      prisma.canteenReminder.findMany({
+        where: { schoolId, service },
+        orderBy: { sentAt: "desc" },
+        take: REMINDERS_LIMIT,
+      }),
+      prisma.canteenSkip.findMany({ where: { schoolId, academicYearId: canteenYearId, service } }),
+    ]).then(([plan, enrollments, payments, reminders, skips]) => ({ plan, enrollments, payments, reminders, skips }));
+  const [canteen, daycare] = await Promise.all([serviceRows("canteen"), serviceRows("daycare")]);
 
   return NextResponse.json(
     {
@@ -93,13 +98,8 @@ export async function GET(req: NextRequest) {
       students,
       payments,
       reminders,
-      canteen: {
-        plan: canteenPlan,
-        enrollments: canteenEnrollments,
-        payments: canteenPayments,
-        reminders: canteenReminders,
-        skips: canteenSkips,
-      },
+      canteen,
+      daycare,
     },
     // This is the device's private copy of its own data: never store it in a
     // shared cache, and never let the service worker serve a stale one.

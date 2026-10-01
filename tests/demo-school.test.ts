@@ -145,8 +145,9 @@ function canteenOf(now: Date) {
   const dataset = buildDemoDataset(now, idFactory());
   const c = dataset.canteen;
   const classById = new Map(dataset.classes.map((cl) => [cl.id, cl]));
-  const year = { schoolId: "demo", academicYearId: "year" };
+  const year = { schoolId: "demo", academicYearId: "year", service: "canteen" };
   const ds: CanteenDataset = {
+    service: "canteen",
     enabled: true,
     schoolName: "Démo",
     contactName: "A. Ouédraogo",
@@ -156,9 +157,9 @@ function canteenOf(now: Date) {
     students: dataset.students.map((st) => ({
       ...st,
       status: "active",
-      class: { name: classById.get(st.classId)!.name },
+      class: { name: classById.get(st.classId)!.name, level: classById.get(st.classId)!.level },
     })),
-    classes: dataset.classes.map((cl) => ({ id: cl.id, name: cl.name })),
+    classes: dataset.classes.map((cl) => ({ id: cl.id, name: cl.name, level: cl.level })),
     enrollments: c.enrollments.map((e) => ({ ...e, ...year })),
     payments: c.payments.map((p) => ({
       ...p,
@@ -171,7 +172,7 @@ function canteenOf(now: Date) {
       cancelReason: null,
       months: c.paymentMonths.filter((m) => m.paymentId === p.id),
     })),
-    reminders: c.reminders.map((r) => ({ ...r, schoolId: "demo" })),
+    reminders: c.reminders.map((r) => ({ ...r, schoolId: "demo", service: "canteen" })),
     skips: c.skips.map((k) => ({ ...k, ...year })),
     actions: c.actions.map((a) => ({ ...a, ...year, undoneAt: null, undoReason: null })),
   };

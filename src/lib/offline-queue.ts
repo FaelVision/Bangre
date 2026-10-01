@@ -2,6 +2,7 @@
 
 import { getDb, QUEUE_STORE as STORE, CONTEXT_STORE, MIRROR_STORE } from "@/lib/offline-db";
 import { isOffline, reportReachable, reportUnreachable } from "@/lib/connectivity";
+import type { SchoolService } from "@/lib/services";
 
 /**
  * One entry is one small write: an answer slower than this means the network
@@ -40,6 +41,8 @@ export type StudentPayload = {
 };
 
 export type CanteenPaymentPayload = {
+  /** The canteen when absent: entries queued before the garde existed. */
+  service?: SchoolService;
   studentId: string;
   selection: { annual: boolean; packageIds: string[]; months: string[] };
   method: string;
@@ -54,10 +57,11 @@ export type QueuedOperation =
   | { kind: "student.update"; studentId: string; payload: StudentPayload }
   | { kind: "reminder.send"; studentId: string; trancheId: string | null; message: string }
   | { kind: "canteen.payment"; payload: CanteenPaymentPayload }
-  | { kind: "canteen.enroll"; studentId: string; startMonth: string | null }
-  | { kind: "canteen.leave"; studentId: string; endMonth: string }
-  | { kind: "canteen.reminder"; studentId: string; message: string }
-  | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean };
+  // `service`: the canteen when absent — the garde says so.
+  | { kind: "canteen.enroll"; studentId: string; startMonth: string | null; service?: SchoolService }
+  | { kind: "canteen.leave"; studentId: string; endMonth: string; service?: SchoolService }
+  | { kind: "canteen.reminder"; studentId: string; message: string; service?: SchoolService }
+  | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean; service?: SchoolService };
 
 export type QueuedEntry = QueuedOperation & {
   id: string;

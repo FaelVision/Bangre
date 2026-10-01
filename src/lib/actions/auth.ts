@@ -1,6 +1,7 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { daycareOffered } from "@/lib/services";
 import { createHash, randomBytes } from "crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -89,6 +90,10 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
       avatarUrl: googleLink?.picture ?? null,
       // No free trial: the school pays on the next screen before using the app.
       subscriptionStatus: "unpaid",
+      // The options ticked at signup; the others stay out of the menu until
+      // the school turns them on from its Options page.
+      canteenEnabled: formData.get("canteen") === "on",
+      daycareEnabled: formData.get("daycare") === "on" && daycareOffered(type),
       academicYears: {
         create: { label: currentAcademicYearLabel(), isCurrent: true },
       },

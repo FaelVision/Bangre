@@ -9,6 +9,7 @@ import { formatAmount } from "@/lib/format";
 import { Field, Label, Select, TextInput } from "@/components/form";
 import { Button, Card } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { levelsNotice, serviceInfo, type SchoolService } from "@/lib/services";
 
 type PackageRow = { label: string; price: string; months: string[] };
 
@@ -21,20 +22,25 @@ export type CanteenSettingsValues = {
   packages: PackageRow[];
 };
 
+/** The prices, months and packages of the canteen or of the garde d'enfants. */
 export function CanteenSettingsForm({
+  service,
   enabled: initiallyEnabled,
   hasPlan,
   yearLabel,
   yearMonths,
   initial,
 }: {
+  service: SchoolService;
   enabled: boolean;
   hasPlan: boolean;
   yearLabel: string;
-  /** The months the canteen may run on this academic year. */
+  /** The months the service may run on this academic year. */
   yearMonths: string[];
   initial: CanteenSettingsValues;
 }) {
+  const info = serviceInfo(service);
+  const notice = levelsNotice(service);
   // Saved online only, like a class configuration: without a network the form
   // says so rather than losing what was typed.
   const [state, formAction, pending] = useActionState(
@@ -43,7 +49,9 @@ export function CanteenSettingsForm({
         return await withNetwork(() => saveCanteenSettingsAction(previous, formData), 20000);
       } catch (err) {
         if (!isNetworkError(err)) throw err;
-        return { error: "Pas de connexion : les réglages de la cantine s'enregistrent en ligne. Réessayez au retour du réseau." };
+        return {
+          error: `Pas de connexion : les réglages de ${info.the} s'enregistrent en ligne. Réessayez au retour du réseau.`,
+        };
       }
     },
     undefined
@@ -88,20 +96,21 @@ export function CanteenSettingsForm({
 
   return (
     <form action={formAction}>
+      <input type="hidden" name="service" value={service} />
       <div className="border-b border-(--color-border) flex flex-col lg:flex-row lg:items-center gap-3 px-4 lg:px-7 py-3.5 lg:py-0 lg:h-[70px] lg:sticky lg:top-0 bg-(--color-bg-app) lg:z-10">
         <div className="min-w-0">
           <div className="text-[12.5px] text-(--color-text-muted)">
-            <Link href="/cantine" className="text-(--color-primary) font-medium">
-              Cantine
+            <Link href={info.path} className="text-(--color-primary) font-medium">
+              {info.title}
             </Link>{" "}
             › Réglages
           </div>
-          <div className="text-[19px] font-semibold tracking-tight mt-0.5">Réglages de la cantine · {yearLabel}</div>
+          <div className="text-[19px] font-semibold tracking-tight mt-0.5">Réglages de {info.the} · {yearLabel}</div>
         </div>
         <div className="hidden lg:block lg:flex-1" />
         <div className="flex items-center gap-2.5 flex-wrap">
           <Link
-            href="/cantine"
+            href={info.path}
             className="h-[38px] rounded-[9px] border border-(--color-border-strong) bg-white flex items-center px-4 text-[13.5px] font-semibold no-underline hover:no-underline"
           >
             Retour
@@ -121,8 +130,8 @@ export function CanteenSettingsForm({
         {state?.saved && (
           <div className="rounded-[11px] border border-(--color-success-border) bg-(--color-success-bg-soft) text-[13.5px] px-4 py-3 flex flex-wrap items-center gap-2">
             <span className="font-semibold text-(--color-success-text-dark)">Réglages enregistrés.</span>
-            <Link href="/cantine" className="text-(--color-primary) font-semibold">
-              {enabled ? "Aller à la cantine →" : "Retour →"}
+            <Link href={info.path} className="text-(--color-primary) font-semibold">
+              {enabled ? `Aller à ${info.the} →` : "Retour →"}
             </Link>
           </div>
         )}
@@ -137,10 +146,14 @@ export function CanteenSettingsForm({
               className="w-[18px] h-[18px] mt-0.5 accent-(--color-primary)"
             />
             <span>
-              <span className="block text-[14.5px] font-semibold">L&apos;établissement propose une cantine</span>
+              <span className="block text-[14.5px] font-semibold">
+                {service === "daycare"
+                  ? "L'établissement propose la garde des enfants"
+                  : "L'établissement propose une cantine"}
+              </span>
               <span className="block text-[12.5px] text-(--color-text-muted) mt-0.5 leading-relaxed">
-                Désactivée, la cantine disparaît des encaissements ; les inscriptions et les paiements déjà
-                enregistrés sont conservés pour le jour où vous la réactivez.
+                {notice ? `${notice} ` : ""}Désactivée, {info.the} disparaît des encaissements ; les inscriptions et
+                les paiements déjà enregistrés sont conservés pour le jour où vous la réactivez.
               </span>
             </span>
           </label>
@@ -174,7 +187,7 @@ export function CanteenSettingsForm({
                 </Field>
               </div>
               <p className="text-[12.5px] text-(--color-text-muted) mt-2.5 leading-relaxed">
-                {period.length} mois de cantine
+                {period.length} mois de {info.noun}
                 {monthly ? ` : ${formatAmount(fullYear)} CFA en payant mois par mois` : ""}
                 {annual && fullYear
                   ? annual < fullYear
@@ -220,7 +233,7 @@ export function CanteenSettingsForm({
                 </Field>
               </div>
               <p className="text-[12.5px] text-(--color-text-muted) mt-2.5">
-                Passé ce jour, un mois non payé apparaît dans les retards de cantine.
+                Passé ce jour, un mois non payé apparaît dans les retards de {info.noun}.
               </p>
             </Card>
 

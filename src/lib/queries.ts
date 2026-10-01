@@ -265,12 +265,14 @@ export const getPromotionOverview = cache(async (schoolId: string) => {
 });
 
 export const getSidebarCounts = cache(async (schoolId: string) => {
-  const [classesCount, studentsCount, all, canteenLateCount] = await Promise.all([
+  const [classesCount, studentsCount, all, canteenLateCount, daycareLateCount, options] = await Promise.all([
     prisma.schoolClass.count({ where: { schoolId, archived: false } }),
     prisma.student.count({ where: { schoolId, status: "active" } }),
     getActiveStudentsWithSummary(schoolId),
-    canteenLateCountFor(schoolId),
+    canteenLateCountFor(schoolId, "canteen"),
+    canteenLateCountFor(schoolId, "daycare"),
+    prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { canteenEnabled: true, daycareEnabled: true } }),
   ]);
   const lateCount = all.filter((row) => row.summary.status === "retard").length;
-  return { classesCount, studentsCount, lateCount, canteenLateCount };
+  return { classesCount, studentsCount, lateCount, canteenLateCount, daycareLateCount, ...options };
 });

@@ -51,6 +51,8 @@ model School {
   // The canteen is an option. Turning it off hides nothing that was recorded:
   // its prices, enrolments and payments stay, ready for when it is back on.
   canteenEnabled        Boolean   @default(false)
+  // Garde d'enfants: the same option, for the maternelle and primaire pupils.
+  daycareEnabled        Boolean   @default(false)
 
   academicYears         AcademicYear[]
   classes               SchoolClass[]
@@ -333,8 +335,11 @@ model SyncLogEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Cantine. Optional per school; only the students enrolled in it pay, month by
-// month. Months are written "YYYY-MM" everywhere ("2026-10").
+// Cantine and garde d'enfants. Two optional services run on the same tables,
+// told apart by `service` ("canteen" | "daycare"): only the students enrolled
+// in a service pay it, month by month. Months are written "YYYY-MM" everywhere
+// ("2026-10"). Uniqueness per service is kept by the code (`canteen-core.ts`),
+// not by indexes: a production schema push may only add, never re-key.
 // ---------------------------------------------------------------------------
 
 /** The canteen prices and calendar of one academic year. */
@@ -344,6 +349,7 @@ model CanteenPlan {
   school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  service        String   @default("canteen")
 
   monthlyPrice   Int
   // Price of every month of the year paid at once. Null: no annual price.
@@ -357,7 +363,7 @@ model CanteenPlan {
 
   packages       CanteenPackage[]
 
-  @@unique([schoolId, academicYearId])
+  @@index([schoolId, academicYearId])
 }
 
 /** A price the school sets for several months paid together ("1er trimestre"). */
@@ -384,6 +390,7 @@ model CanteenEnrollment {
   student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  service        String   @default("canteen")
 
   startMonth     String
   endMonth       String?
@@ -402,6 +409,7 @@ model CanteenPayment {
   student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  service        String   @default("canteen")
 
   amount         Int
   // What the receipt says was paid: "Octobre 2026 à décembre 2026", "Année complète"…
@@ -451,10 +459,11 @@ model CanteenSkip {
   student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  service        String   @default("canteen")
   month          String
   createdAt      DateTime @default(now())
 
-  @@unique([studentId, academicYearId, month])
+  @@index([studentId, academicYearId, month])
   @@index([schoolId, academicYearId])
 }
 
@@ -476,6 +485,7 @@ model CanteenAction {
   studentId      String
   student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
+  service        String   @default("canteen")
 
   kind           String
   data           String // JSON
@@ -488,13 +498,14 @@ model CanteenAction {
   @@index([schoolId, createdAt])
 }
 
-/** A WhatsApp rappel about unpaid canteen months, kept apart from tuition rappels. */
+/** A WhatsApp rappel about unpaid canteen (or garde) months, kept apart from tuition rappels. */
 model CanteenReminder {
   id        String   @id @default(cuid())
   schoolId  String
   school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentId String
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  service        String   @default("canteen")
   message   String
   sentAt    DateTime @default(now())
 

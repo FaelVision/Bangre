@@ -11,6 +11,7 @@ import { CanteenRemindersButton } from "@/components/canteen/canteen-reminders";
 import { CanteenMonthsButton } from "@/components/canteen/canteen-months-button";
 import { CanteenUndoButton } from "@/components/canteen/canteen-undo-button";
 import { cn } from "@/lib/cn";
+import { levelsNotice, serviceInfo } from "@/lib/services";
 
 const primaryAction =
   "h-[38px] rounded-[9px] bg-(--color-primary) text-white flex items-center px-4 text-[13.5px] font-semibold hover:bg-(--color-primary-hover)";
@@ -18,9 +19,10 @@ const secondaryAction =
   "h-[38px] rounded-[9px] border border-(--color-border-strong) bg-white flex items-center px-4 text-[13.5px] font-semibold no-underline hover:no-underline";
 
 /**
- * Cantine. The same screen online and offline: the figures come from
- * `canteenOverview`, fed by the database or by the copy on the device. Offline
- * the receipt PDFs and the settings step aside — the server makes those.
+ * Cantine, and Garde d'enfants: one screen for both services, worded for the
+ * one `data` is about. The same screen online and offline: the figures come
+ * from `canteenOverview`, fed by the database or by the copy on the device.
+ * Offline the receipt PDFs and the settings step aside — the server makes those.
  */
 export function CanteenView({
   data,
@@ -34,20 +36,23 @@ export function CanteenView({
   onNavigate?: (href: string) => void;
 }) {
   const plan = data.plan;
+  const service = data.service;
+  const info = serviceInfo(service);
+  const notice = levelsNotice(service);
 
   if (!data.enabled || !plan) {
     return (
       <div>
-        <PageHeader title="Cantine" subtitle="Option de l'établissement" />
+        <PageHeader title={info.title} subtitle="Option de l'établissement" />
         <div className="p-4 lg:p-7">
           <Card className="max-w-[560px]">
             <div className="text-[16px] font-semibold">
-              {data.enabled ? "Tarifs de la cantine à régler" : "La cantine n'est pas activée"}
+              {data.enabled ? `Tarifs de ${info.the} à régler` : `${capitalize(info.the)} n'est pas activée`}
             </div>
             <p className="text-[13.5px] text-(--color-text-secondary) leading-relaxed mt-2">
-              Si votre établissement propose une cantine, Bangré suit son paiement à part de la scolarité : vous
-              inscrivez les élèves qui la prennent, et ils la règlent au mois, sur plusieurs mois (forfaits) ou à
-              l&apos;année. Les autres élèves ne sont pas concernés.
+              {service === "daycare"
+                ? "Si votre établissement garde les enfants (avant ou après la classe, le midi…), Bangré suit ce paiement à part de la scolarité : vous inscrivez les enfants gardés, et leurs parents règlent au mois, sur plusieurs mois (forfaits) ou à l'année. La garde est réservée aux élèves de maternelle et du primaire."
+                : "Si votre établissement propose une cantine, Bangré suit son paiement à part de la scolarité : vous inscrivez les élèves qui la prennent, et ils la règlent au mois, sur plusieurs mois (forfaits) ou à l'année. Les autres élèves ne sont pas concernés."}
             </p>
             <p className="text-[13.5px] text-(--color-text-secondary) leading-relaxed mt-2">
               Fixez d&apos;abord le prix mensuel, les mois d&apos;ouverture et, si vous le souhaitez, un prix annuel
@@ -55,11 +60,14 @@ export function CanteenView({
             </p>
             {offline ? (
               <p className="text-[13px] text-(--color-gold-text) mt-4">
-                Les réglages de la cantine se font en ligne, au retour du réseau.
+                Les réglages de {info.the} se font en ligne, au retour du réseau.
               </p>
             ) : (
-              <Link href="/cantine/reglages" className={cn(primaryAction, "inline-flex mt-4 no-underline hover:no-underline")}>
-                Activer et régler la cantine
+              <Link
+                href={`${info.path}/reglages`}
+                className={cn(primaryAction, "inline-flex mt-4 no-underline hover:no-underline")}
+              >
+                Activer et régler {info.the}
               </Link>
             )}
           </Card>
@@ -78,24 +86,25 @@ export function CanteenView({
     const merged = { vue: data.vue === "inscrits" ? undefined : data.vue, ...data.filters, ...overrides };
     const params = new URLSearchParams(Object.entries(merged).filter(([, v]) => v) as [string, string][]);
     const text = params.toString();
-    return text ? `/cantine?${text}` : "/cantine";
+    return text ? `${info.path}?${text}` : info.path;
   };
 
   return (
     <div>
       <PageHeader
-        title="Cantine"
+        title={info.title}
         subtitle={`${data.yearLabel} · ${formatAmount(plan.monthlyPrice)} CFA / mois${
           plan.annualPrice ? ` · ${formatAmount(plan.annualPrice)} CFA l'année` : ""
-        } · ${capitalize(describeMonths(monthRange(plan.firstMonth, plan.lastMonth)))}`}
+        } · ${capitalize(describeMonths(monthRange(plan.firstMonth, plan.lastMonth)))}${notice ? ` · ${notice}` : ""}`}
         actions={
           <>
             {!offline && (
-              <Link href="/cantine/reglages" className={secondaryAction}>
+              <Link href={`${info.path}/reglages`} className={secondaryAction}>
                 Réglages
               </Link>
             )}
             <CanteenEnrollButton
+              service={service}
               candidates={candidates}
               firstMonth={plan.firstMonth}
               lastMonth={plan.lastMonth}
@@ -104,8 +113,8 @@ export function CanteenView({
             >
               + Inscrire des élèves
             </CanteenEnrollButton>
-            <CanteenPayButton students={data.payable} className={primaryAction}>
-              + Paiement cantine
+            <CanteenPayButton service={service} students={data.payable} className={primaryAction}>
+              + Paiement {info.noun}
             </CanteenPayButton>
           </>
         }
@@ -113,7 +122,7 @@ export function CanteenView({
 
       <div className="p-4 lg:p-5 lg:px-7 pb-10 grid gap-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-          <Stat label="Élèves inscrits" value={String(data.stats.enrolledCount)} hint="mangent à la cantine" />
+          <Stat label="Élèves inscrits" value={String(data.stats.enrolledCount)} hint={info.enrolledHint} />
           <Stat label="À jour ce mois-ci" value={String(data.stats.upToDateCount)} hint="mois en cours réglé" tone="success" />
           <Stat
             label="En retard"
@@ -160,7 +169,7 @@ export function CanteenView({
         {(data.vue === "inscrits" || data.vue === "retards") && (
           <div className="flex items-start gap-2.5 flex-wrap -mb-1">
             <ListFilters
-              basePath="/cantine"
+              basePath={info.path}
               currentParams={{ vue: data.vue === "inscrits" ? undefined : data.vue, ...data.filters }}
               onNavigate={onNavigate}
               searchParam={{ name: "q", placeholder: "Nom, prénom ou matricule…", value: data.filters.q }}
@@ -175,7 +184,7 @@ export function CanteenView({
             {data.vue === "retards" && (
               <>
                 <div className="flex-1" />
-                <CanteenRemindersButton students={data.reachableLate} />
+                <CanteenRemindersButton service={service} students={data.reachableLate} />
               </>
             )}
           </div>
@@ -186,7 +195,7 @@ export function CanteenView({
         {data.vue === "paiements" && <PaymentsTable data={data} offline={offline} />}
         {data.vue === "historique" && <HistoryTable data={data} />}
 
-        {(data.vue === "inscrits" || data.vue === "retards") && <MonthLegend />}
+        {(data.vue === "inscrits" || data.vue === "retards") && <MonthLegend service={service} />}
 
         {data.pageCount > 1 && (
           <div className="flex gap-1.5 justify-end flex-wrap">
@@ -249,6 +258,8 @@ function EmptyRow({ colSpan, children }: { colSpan: number; children: React.Reac
 
 function EnrolledTable({ data }: { data: CanteenOverview }) {
   const plan = data.plan!;
+  const service = data.service;
+  const info = serviceInfo(service);
   return (
     <div className="bg-white border border-(--color-border) rounded-2xl overflow-x-auto">
       <table className="w-full" style={{ minWidth: 960 }}>
@@ -269,17 +280,17 @@ function EnrolledTable({ data }: { data: CanteenOverview }) {
               </Td>
               <Td>{r.student.class.name}</Td>
               <Td>
-                <MonthChips months={r.summary.months} />
+                <MonthChips service={service} months={r.summary.months} />
                 <div className="text-[12px] text-(--color-text-muted) mt-1">
                   {r.summary.paidCount}/{r.summary.billableCount} mois payés
                   {r.summary.billableCount < r.summary.months.length
-                    ? ` · ${r.summary.months.length - r.summary.billableCount} sans cantine`
+                    ? ` · ${r.summary.months.length - r.summary.billableCount} ${info.without}`
                     : ""}
                 </div>
               </Td>
               <Td>
                 {!r.enrolled ? (
-                  <Badge tone="neutral">Sorti de la cantine</Badge>
+                  <Badge tone="neutral">Sorti de {info.the}</Badge>
                 ) : r.summary.status === "retard" ? (
                   <Badge tone="danger">{r.summary.statusLabel}</Badge>
                 ) : (
@@ -290,6 +301,7 @@ function EnrolledTable({ data }: { data: CanteenOverview }) {
                 <div className="flex gap-1.5 justify-end flex-wrap">
                   {r.summary.paidCount < r.summary.billableCount && (
                     <CanteenPayButton
+                      service={service}
                       studentId={r.student.id}
                       className="h-8 rounded-lg bg-(--color-primary) text-white px-2.5 text-[12px] font-semibold"
                     >
@@ -297,6 +309,7 @@ function EnrolledTable({ data }: { data: CanteenOverview }) {
                     </CanteenPayButton>
                   )}
                   <CanteenMonthsButton
+                    service={service}
                     student={{ id: r.student.id, label: `${r.student.lastName} ${r.student.firstName}` }}
                     months={r.summary.months}
                     enrollment={
@@ -307,6 +320,7 @@ function EnrolledTable({ data }: { data: CanteenOverview }) {
                   />
                   {r.enrolled && (
                     <CanteenLeaveButton
+                      service={service}
                       student={{ id: r.student.id, label: `${r.student.lastName} ${r.student.firstName}` }}
                       startMonth={r.openStartMonth ?? r.startMonth}
                       lastMonth={plan.lastMonth}
@@ -331,6 +345,7 @@ function EnrolledTable({ data }: { data: CanteenOverview }) {
 }
 
 function LateTable({ data }: { data: CanteenOverview }) {
+  const service = data.service;
   return (
     <div className="bg-white border border-(--color-border) rounded-2xl overflow-x-auto">
       <table className="w-full" style={{ minWidth: 960 }}>
@@ -367,9 +382,10 @@ function LateTable({ data }: { data: CanteenOverview }) {
               <td className="py-3 pr-4 text-right">
                 <div className="flex gap-1.5 justify-end items-start flex-wrap">
                   {r.student.parentPhone && (
-                    <CanteenRemindersButton students={[{ id: r.student.id, label: r.student.firstName }]} />
+                    <CanteenRemindersButton service={service} students={[{ id: r.student.id, label: r.student.firstName }]} />
                   )}
                   <CanteenPayButton
+                    service={service}
                     studentId={r.student.id}
                     className="h-8 rounded-lg bg-(--color-primary) text-white px-2.5 text-[12px] font-semibold"
                   >
@@ -379,7 +395,7 @@ function LateTable({ data }: { data: CanteenOverview }) {
               </td>
             </tr>
           ))}
-          {data.rows.length === 0 && <EmptyRow colSpan={7}>Aucun retard de cantine. 🎉</EmptyRow>}
+          {data.rows.length === 0 && <EmptyRow colSpan={7}>Aucun retard de {serviceInfo(service).noun}. 🎉</EmptyRow>}
         </tbody>
       </table>
     </div>
@@ -451,7 +467,7 @@ function PaymentsTable({ data, offline }: { data: CanteenOverview; offline: bool
               </td>
             </tr>
           ))}
-          {data.payments.length === 0 && <EmptyRow colSpan={8}>Aucun paiement de cantine enregistré.</EmptyRow>}
+          {data.payments.length === 0 && <EmptyRow colSpan={8}>Aucun paiement de {serviceInfo(data.service).noun} enregistré.</EmptyRow>}
         </tbody>
       </table>
     </div>
@@ -479,7 +495,7 @@ function HistoryTable({ data }: { data: CanteenOverview }) {
   return (
     <>
       <p className="text-[12.5px] text-(--color-text-muted) -mb-1">
-        Toutes les opérations de la cantine des 30 derniers jours. Une erreur se corrige le jour même avec « Annuler » :
+        Toutes les opérations de {serviceInfo(data.service).the} des 30 derniers jours. Une erreur se corrige le jour même avec « Annuler » :
         tout redevient comme avant.
       </p>
       <div className="bg-white border border-(--color-border) rounded-2xl overflow-x-auto">

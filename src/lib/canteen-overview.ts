@@ -3,6 +3,7 @@ import {
   annualAvailable,
   availablePackages,
   canteenPricing,
+  capitalize,
   type CanteenPricing,
   canteenReminderMessage,
   canteenSummary,
@@ -15,19 +16,23 @@ import {
   type CanteenPlanWithPackages,
   type CanteenSummary,
 } from "@/lib/canteen";
+import { levelAllowed, serviceInfo, type SchoolService } from "@/lib/services";
 
 /**
- * What the Cantine screens show, computed from one `CanteenDataset`. The server
- * fills the dataset from the database (`canteen-core.ts`), the device from its
- * local copy (`offline-data.ts`): both then read identical figures.
+ * What the Cantine (and Garde d'enfants) screens show, computed from one
+ * `CanteenDataset`. The server fills the dataset from the database
+ * (`canteen-core.ts`), the device from its local copy (`offline-data.ts`):
+ * both then read identical figures.
  */
 
 export type CanteenStudent = Pick<
   Student,
   "id" | "firstName" | "lastName" | "matricule" | "classId" | "status" | "parentName" | "parentPhone" | "whatsappStatus"
-> & { class: { name: string } };
+> & { class: { name: string; level: string } };
 
 export type CanteenDataset = {
+  /** Which service the dataset is about: every row in it belongs to that one. */
+  service: SchoolService;
   enabled: boolean;
   schoolName: string;
   contactName: string;
@@ -37,7 +42,7 @@ export type CanteenDataset = {
   /** Every student of the school; the screens keep the active ones. */
   students: CanteenStudent[];
   /** The classes still in use, in display order. */
-  classes: { id: string; name: string }[];
+  classes: { id: string; name: string; level: string }[];
   /** This academic year's. */
   enrollments: CanteenEnrollment[];
   payments: CanteenPaymentWithMonths[];
@@ -175,6 +180,7 @@ export function canteenOverview(ds: CanteenDataset, filter: CanteenFilter = {}, 
     vue === "paiements" ? paymentList.length : vue === "historique" ? historyList.length : rows.length;
 
   return {
+    service: ds.service,
     enabled: ds.enabled,
     yearLabel: ds.yearLabel,
     plan: ds.plan
@@ -245,9 +251,10 @@ export function canteenOverview(ds: CanteenDataset, filter: CanteenFilter = {}, 
     page,
     pageCount: Math.max(1, Math.ceil(listLength / CANTEEN_PAGE_SIZE)),
     total: listLength,
-    classes: ds.classes,
+    // The garde only lists the classes it is open to.
+    classes: ds.classes.filter((c) => levelAllowed(ds.service, c.level)).map((c) => ({ id: c.id, name: c.name })),
     currentMonth,
-    /** Who the "Paiement cantine" search offers: every student enrolled this year. */
+    /** Who the "Paiement" search offers: every student enrolled this year. */
     payable: all.map((r) => ({
       id: r.student.id,
       label: `${r.student.lastName} ${r.student.firstName} · ${r.student.class.name} · ${r.student.matricule}`,
@@ -260,12 +267,17 @@ export function canteenOverview(ds: CanteenDataset, filter: CanteenFilter = {}, 
 
 export type CanteenOverview = ReturnType<typeof canteenOverview>;
 
-/** Active students not eating at the canteen right now — who can be enrolled. */
+/**
+ * Active students not in the service right now — who can be enrolled. The
+ * garde only takes the pupils of maternelle and primaire classes.
+ */
 export function canteenEnrollCandidates(ds: CanteenDataset) {
   const open = new Set(ds.enrollments.filter((e) => e.endMonth == null).map((e) => e.studentId));
   const order = new Map(ds.classes.map((c, i) => [c.id, i]));
   return ds.students
-    .filter((s) => s.status === "active" && !open.has(s.id) && order.has(s.classId))
+    .filter(
+      (s) => s.status === "active" && !open.has(s.id) && order.has(s.classId) && levelAllowed(ds.service, s.class.level)
+    )
     .sort(
       (a, b) =>
         (order.get(a.classId) ?? 0) - (order.get(b.classId) ?? 0) ||
@@ -300,13 +312,14 @@ export function canteenPaymentContext(
   studentId: string,
   now: Date = new Date()
 ): CanteenPaymentContext | { error: string } {
-  if (!ds.enabled) return { error: "La cantine n'est pas activée pour cet établissement." };
+  const info = serviceInfo(ds.service);
+  if (!ds.enabled) return { error: `${capitalize(info.the)} n'est pas activée pour cet établissement.` };
   const plan = ds.plan;
-  if (!plan) return { error: "Les tarifs de la cantine ne sont pas encore réglés pour cette année." };
+  if (!plan) return { error: `Les tarifs de ${info.the} ne sont pas encore réglés pour cette année.` };
   const student = ds.students.find((s) => s.id === studentId);
   if (!student) return { error: "Élève introuvable." };
   const enrollments = ds.enrollments.filter((e) => e.studentId === studentId);
-  if (enrollments.length === 0) return { error: `${student.firstName} ${student.lastName} n'est pas inscrit(e) à la cantine.` };
+  if (enrollments.length === 0) return { error: `${student.firstName} ${student.lastName} n'est pas inscrit(e) à ${info.the}.` };
 
   const payments = ds.payments.filter((p) => p.studentId === studentId);
   const skipped = skippedMonths(ds, studentId);
@@ -331,13 +344,19 @@ export function canteenPaymentContext(
   };
 }
 
-/** The canteen card of a student file. Null when the school has no canteen running. */
+/**
+ * The canteen (or garde) card of a student file. Null when the school does not
+ * run the service, or when the pupil's class may not take it and never did.
+ */
 export function canteenStudentCard(ds: CanteenDataset, studentId: string, now: Date = new Date()) {
   if (!ds.enabled || !ds.plan) return null;
   const enrollments = ds.enrollments.filter((e) => e.studentId === studentId);
+  const student = ds.students.find((s) => s.id === studentId);
+  if (enrollments.length === 0 && !levelAllowed(ds.service, student?.class.level)) return null;
   const open = openEnrollment(enrollments);
   const payments = ds.payments.filter((p) => p.studentId === studentId);
   return {
+    service: ds.service,
     enrolled: open != null,
     /** When the stretch still running began; null when not enrolled now. */
     startMonth: open?.startMonth ?? null,
@@ -364,7 +383,8 @@ export function canteenReminderFor(
   studentId: string,
   now: Date = new Date()
 ): PreparedCanteenReminder | { error: string } {
-  if (!ds.plan) return { error: "La cantine n'est pas configurée." };
+  const info = serviceInfo(ds.service);
+  if (!ds.plan) return { error: `${capitalize(info.the)} n'est pas configurée.` };
   const student = ds.students.find((s) => s.id === studentId);
   if (!student) return { error: "Élève introuvable." };
   if (!student.parentPhone) return { error: "Aucun numéro de parent enregistré." };
@@ -376,12 +396,13 @@ export function canteenReminderFor(
     now,
     skippedMonths(ds, studentId)
   );
-  if (summary.lateMonths.length === 0) return { error: "Cet élève est à jour pour la cantine." };
+  if (summary.lateMonths.length === 0) return { error: `Cet élève est à jour pour ${info.the}.` };
   return {
     studentId,
     label: `${student.firstName} ${student.lastName}`,
     phone: student.parentPhone,
     message: canteenReminderMessage({
+      service: ds.service,
       parentName: student.parentName,
       studentFirstName: student.firstName,
       studentLastName: student.lastName,

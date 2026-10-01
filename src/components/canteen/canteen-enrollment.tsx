@@ -6,6 +6,7 @@ import { addMonths, capitalize, monthLabel, monthRange } from "@/lib/canteen";
 import type { CanteenEnrollCandidate } from "@/lib/canteen-overview";
 import { enrollInCanteen, leaveCanteen } from "@/lib/canteen-client";
 import { cn } from "@/lib/cn";
+import { levelsNotice, serviceInfo, type SchoolService } from "@/lib/services";
 
 const selectClass =
   "w-full h-[42px] border border-(--color-border-strong) rounded-[10px] px-3 text-[13.5px] bg-white focus:outline-none focus:border-(--color-primary)";
@@ -39,10 +40,11 @@ function Modal({ title, subtitle, onClose, children }: { title: string; subtitle
 }
 
 /**
- * Enrols students in the canteen: one, a whole class, or a hand-picked list,
- * from a chosen month. Only those enrolled are billed.
+ * Enrols students in the canteen (or the garde): one, a whole class, or a
+ * hand-picked list, from a chosen month. Only those enrolled are billed.
  */
 export function CanteenEnrollButton({
+  service,
   candidates,
   firstMonth,
   lastMonth,
@@ -51,6 +53,7 @@ export function CanteenEnrollButton({
   className,
   children,
 }: {
+  service: SchoolService;
   candidates: CanteenEnrollCandidate[];
   firstMonth: string;
   lastMonth: string;
@@ -68,6 +71,7 @@ export function CanteenEnrollButton({
       </button>
       {open && (
         <EnrollModal
+          service={service}
           candidates={candidates}
           firstMonth={firstMonth}
           lastMonth={lastMonth}
@@ -81,6 +85,7 @@ export function CanteenEnrollButton({
 }
 
 function EnrollModal({
+  service,
   candidates,
   firstMonth,
   lastMonth,
@@ -88,6 +93,7 @@ function EnrollModal({
   preselect,
   onClose,
 }: {
+  service: SchoolService;
   candidates: CanteenEnrollCandidate[];
   firstMonth: string;
   lastMonth: string;
@@ -96,6 +102,8 @@ function EnrollModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const info = serviceInfo(service);
+  const notice = levelsNotice(service);
   const months = monthRange(firstMonth, lastMonth);
   const defaultStart = currentMonth < firstMonth ? firstMonth : currentMonth > lastMonth ? lastMonth : currentMonth;
   const [startMonth, setStartMonth] = useState(defaultStart);
@@ -142,7 +150,7 @@ function EnrollModal({
     const students = candidates.filter((c) => selected.has(c.id)).map((c) => ({ id: c.id, label: c.label }));
     if (students.length === 0) return;
     startTransition(async () => {
-      const res = await enrollInCanteen(students, startMonth);
+      const res = await enrollInCanteen(students, startMonth, service);
       setOutcome(res);
       if (!res.queued) router.refresh();
     });
@@ -150,7 +158,7 @@ function EnrollModal({
 
   if (outcome) {
     return (
-      <Modal title="Inscription à la cantine" onClose={onClose}>
+      <Modal title={`Inscription à ${info.the}`} onClose={onClose}>
         <div className="p-5">
           <div className="text-[15px] font-semibold text-(--color-success-text)">
             {outcome.enrolled} élève{outcome.enrolled > 1 ? "s" : ""} inscrit{outcome.enrolled > 1 ? "s" : ""}
@@ -159,7 +167,7 @@ function EnrollModal({
           <p className="text-[13px] text-(--color-text-muted) mt-1.5">
             {outcome.queued
               ? "Hors ligne : les inscriptions partent au serveur au retour du réseau."
-              : `La cantine leur est due dès ${monthLabel(startMonth)}.`}
+              : `${capitalize(info.the)} leur est due dès ${monthLabel(startMonth)}.`}
           </p>
           {outcome.errors.map((e) => (
             <p key={e} className="text-[13px] text-(--color-danger-text) mt-1.5">
@@ -180,8 +188,8 @@ function EnrollModal({
 
   return (
     <Modal
-      title="Inscrire à la cantine"
-      subtitle="Seuls les élèves inscrits paient la cantine, à partir du mois choisi."
+      title={`Inscrire à ${info.the}`}
+      subtitle={`Seuls les élèves inscrits paient ${info.the}, à partir du mois choisi.${notice ? ` ${notice}` : ""}`}
       onClose={onClose}
     >
       <div className="px-5 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -230,7 +238,11 @@ function EnrollModal({
       <div className="px-3 pb-2 overflow-y-auto min-h-[120px]">
         {visible.length === 0 && (
           <div className="text-[13px] text-(--color-text-muted) text-center py-6">
-            {candidates.length === 0 ? "Tous les élèves actifs sont déjà inscrits à la cantine." : "Aucun élève ne correspond."}
+            {candidates.length === 0
+              ? notice
+                ? `Tous les élèves de maternelle et du primaire sont déjà inscrits à ${info.the}.`
+                : `Tous les élèves actifs sont déjà inscrits à ${info.the}.`
+              : "Aucun élève ne correspond."}
           </div>
         )}
         {visible.map((c) => (
@@ -273,14 +285,16 @@ function EnrollModal({
   );
 }
 
-/** Takes a student out of the canteen after the last month they eat there. */
+/** Takes a student out of the canteen (or the garde) after the last month they come. */
 export function CanteenLeaveButton({
+  service,
   student,
   startMonth,
   lastMonth,
   currentMonth,
   className,
 }: {
+  service: SchoolService;
   student: { id: string; label: string };
   /** When the current stretch began. */
   startMonth: string;
@@ -303,6 +317,7 @@ export function CanteenLeaveButton({
       </button>
       {open && (
         <LeaveModal
+          service={service}
           student={student}
           startMonth={startMonth}
           lastMonth={lastMonth}
@@ -315,12 +330,14 @@ export function CanteenLeaveButton({
 }
 
 function LeaveModal({
+  service,
   student,
   startMonth,
   lastMonth,
   currentMonth,
   onClose,
 }: {
+  service: SchoolService;
   student: { id: string; label: string };
   startMonth: string;
   lastMonth: string;
@@ -328,6 +345,7 @@ function LeaveModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const info = serviceInfo(service);
   const months = monthRange(startMonth, lastMonth);
   const cancelValue = "cancel";
   const [value, setValue] = useState(months.includes(currentMonth) ? currentMonth : (months[months.length - 1] ?? cancelValue));
@@ -340,7 +358,7 @@ function LeaveModal({
     // "No month at all" is sent as the month before the stretch began.
     const endMonth = value === cancelValue ? addMonths(startMonth, -1) : value;
     startTransition(async () => {
-      const res = await leaveCanteen(student, endMonth);
+      const res = await leaveCanteen(student, endMonth, service);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -351,12 +369,12 @@ function LeaveModal({
   }
 
   return (
-    <Modal title={`Retirer de la cantine · ${student.label}`} onClose={onClose}>
+    <Modal title={`Retirer de ${info.the} · ${student.label}`} onClose={onClose}>
       <div className="p-5">
         {done ? (
           <>
             <div className="text-[14.5px] font-semibold text-(--color-success-text)">
-              {done.queued ? "Sortie enregistrée sur cet appareil" : "Sortie de la cantine enregistrée"}
+              {done.queued ? "Sortie enregistrée sur cet appareil" : `Sortie de ${info.the} enregistrée`}
             </div>
             <p className="text-[13px] text-(--color-text-muted) mt-1.5">
               Les mois suivants ne lui seront plus demandés. Vous pourrez le réinscrire plus tard si besoin.
@@ -366,7 +384,7 @@ function LeaveModal({
           <>
             <label className="block">
               <span className="block text-[12.5px] font-semibold text-(--color-text-secondary) mb-1.5">
-                Dernier mois à la cantine
+                Dernier mois à {info.the}
               </span>
               <select value={value} onChange={(e) => setValue(e.target.value)} className={selectClass}>
                 <option value={cancelValue}>Aucun : annuler l&apos;inscription</option>
@@ -399,7 +417,7 @@ function LeaveModal({
               disabled={pending}
               className="flex-[1.5] h-[42px] rounded-[10px] bg-(--color-danger-text) text-white text-[13.5px] font-semibold cursor-pointer disabled:opacity-50"
             >
-              {pending ? "Enregistrement…" : "Retirer de la cantine"}
+              {pending ? "Enregistrement…" : `Retirer de ${info.the}`}
             </button>
           )}
         </div>

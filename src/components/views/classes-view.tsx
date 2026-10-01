@@ -3,7 +3,7 @@ import { formatCFA } from "@/lib/format";
 import { Badge, Card, PageHeader, ProgressBar } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
-const LEVELS = ["Primaire", "Collège", "Lycée"] as const;
+const LEVELS = ["Maternelle", "Primaire", "Collège", "Lycée"] as const;
 
 export type ClassOverviewRow = {
   class: { id: string; name: string; level: string; tuitionAmount: number | null };

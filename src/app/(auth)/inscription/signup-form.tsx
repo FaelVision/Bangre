@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import Link from "next/link";
 import { signupAction } from "@/lib/actions/auth";
 import { Field, Label, TextInput, Select, Checkbox } from "@/components/form";
 import { Button } from "@/components/ui";
 import { GoogleButton, AuthDivider } from "@/components/google-button";
+import { daycareOffered } from "@/lib/services";
 
 export function SignupForm({
   googleEnabled,
@@ -16,6 +17,7 @@ export function SignupForm({
   googleLink: { email: string; name: string } | null;
 }) {
   const [state, formAction, pending] = useActionState(signupAction, undefined);
+  const [type, setType] = useState("Secondaire");
 
   return (
     <div>
@@ -60,11 +62,30 @@ export function SignupForm({
           </Field>
           <Field>
             <Label>Type</Label>
-            <Select name="type" defaultValue="Secondaire">
+            <Select name="type" value={type} onChange={(e) => setType(e.target.value)}>
+              <option value="Maternelle et primaire">Maternelle et primaire</option>
               <option value="Primaire">Primaire</option>
               <option value="Secondaire">Secondaire</option>
             </Select>
           </Field>
+          <div className="sm:col-span-2">
+            <div className="text-[13px] font-semibold text-(--color-text-secondary) mb-1.5">
+              Options (facultatif)
+            </div>
+            <div className="grid gap-2">
+              <OptionBox name="canteen" title="Cantine">
+                Les élèves inscrits paient la cantine au mois, en forfaits ou à l&apos;année.
+              </OptionBox>
+              {daycareOffered(type) && (
+                <OptionBox name="daycare" title="Garde d'enfants">
+                  Pour les élèves de maternelle et du primaire gardés par l&apos;école, payée de la même façon.
+                </OptionBox>
+              )}
+            </div>
+            <p className="text-[12px] text-(--color-text-muted) mt-1.5">
+              Vous pourrez les activer ou les retirer plus tard, dans « Options de l&apos;établissement ».
+            </p>
+          </div>
           <div className="sm:col-span-2">
             <Field>
               <Label>Responsable du compte</Label>
@@ -126,5 +147,18 @@ export function SignupForm({
         </div>
       </form>
     </div>
+  );
+}
+
+/** One option the school may take from the start; unticked, it stays out of the menu. */
+function OptionBox({ name, title, children }: { name: string; title: string; children: React.ReactNode }) {
+  return (
+    <label className="flex items-start gap-3 rounded-[11px] border border-(--color-border-strong) bg-white px-3.5 py-3 cursor-pointer">
+      <input type="checkbox" name={name} className="w-[18px] h-[18px] mt-0.5 accent-(--color-primary)" />
+      <span>
+        <span className="block text-[14px] font-semibold">{title}</span>
+        <span className="block text-[12.5px] text-(--color-text-muted) mt-0.5 leading-relaxed">{children}</span>
+      </span>
+    </label>
   );
 }

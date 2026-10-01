@@ -55,6 +55,8 @@ async function buildSnapshot(id: string) {
         subscriptionStatus: true,
         subscriptionRenewsAt: true,
         blocked: true,
+        canteenEnabled: true,
+        daycareEnabled: true,
       },
     }),
     prisma.academicYear.findFirst({ where: { schoolId: id, isCurrent: true } }),
@@ -208,5 +210,8 @@ test("barre latérale : mêmes compteurs", async () => {
     studentsCount: server.studentsCount,
     lateCount: server.lateCount,
     canteenLateCount: server.canteenLateCount,
+    daycareLateCount: server.daycareLateCount,
+    canteenEnabled: server.canteenEnabled,
+    daycareEnabled: server.daycareEnabled,
   });
 });
