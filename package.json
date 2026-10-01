@@ -5,7 +5,7 @@
   "scripts": {
     "predev": "node scripts/sync-prisma-provider.mjs",
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/migrate-prod.mjs && next build",
     "postinstall": "node scripts/sync-prisma-provider.mjs && node scripts/prisma-generate-safe.mjs",
     "start": "next start",
     "lint": "eslint",
