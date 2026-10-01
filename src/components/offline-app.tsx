@@ -19,7 +19,9 @@ import { ClassConfigSummary } from "@/components/views/class-config-summary";
 import { useOnlineStatus } from "@/components/offline-status";
 import { useLocalData, refreshIfStale } from "@/lib/offline-mirror";
 import { assumeUnreachable } from "@/lib/connectivity";
-import { canteenDataset, type MirrorData } from "@/lib/offline-data";
+import { canteenDataset, uniformDataset, type MirrorData } from "@/lib/offline-data";
+import { UniformsView } from "@/components/views/uniforms-view";
+import { uniformStudentCard, uniformsOverview } from "@/lib/uniforms-overview";
 import {
   classesOverview,
   dashboardData,
@@ -320,6 +322,7 @@ function Screen({
         data={detail}
         canteen={canteenStudentCard(canteenDataset(data, "canteen"), studentId)}
         daycare={canteenStudentCard(canteenDataset(data, "daycare"), studentId)}
+        uniforms={uniformStudentCard(uniformDataset(data), studentId)}
         offline
       />
     );
@@ -384,6 +387,17 @@ function Screen({
           page,
         })}
         candidates={canteenEnrollCandidates(ds)}
+        offline
+        onNavigate={navigate}
+      />
+    );
+  }
+
+  // /tenues — sales and remises work offline; the catalogue waits for the network.
+  if (path === "/tenues") {
+    return (
+      <UniformsView
+        data={uniformsOverview(uniformDataset(data), { vue: params.get("vue") ?? undefined, q, page })}
         offline
         onNavigate={navigate}
       />
@@ -474,7 +488,9 @@ function OnlineOnly({ path }: { path: string }) {
       ? "Une nouvelle classe se crée en ligne : ses tranches servent ensuite à tous les encaissements, sur tous les postes."
       : path.startsWith("/abonnement") || path.startsWith("/compte")
         ? "L'abonnement se gère en ligne."
-        : path.startsWith("/options")
+        : path.startsWith("/tenues/reglages")
+          ? "Le catalogue des tenues se règle en ligne : il sert ensuite à toutes les ventes, sur tous les postes."
+          : path.startsWith("/options")
           ? "Les options de l'établissement (cantine, garde d'enfants) s'activent en ligne, pour tous les postes à la fois."
           : path.startsWith("/cantine/reglages") || path.startsWith("/garde/reglages")
           ? `Les tarifs et les mois de ${path.startsWith("/garde") ? "la garde" : "la cantine"} se règlent en ligne : ils servent ensuite à tous les encaissements, sur tous les postes.`
@@ -487,7 +503,7 @@ function OnlineOnly({ path }: { path: string }) {
         <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-1.5">{reason}</p>
         <p className="text-[13px] text-(--color-text-secondary) leading-relaxed mt-2">
           Tout le reste fonctionne sans réseau : tableau de bord, classes, élèves (ajout, modification, import de
-          liste), encaissements, retards, rappels WhatsApp, journal des paiements, cantine et garde.
+          liste), encaissements, retards, rappels WhatsApp, journal des paiements, cantine, garde et tenues.
         </p>
         <Link href="/tableau-de-bord" className="text-[13px] font-semibold text-(--color-primary) mt-3 inline-block">
           Retour au tableau de bord →

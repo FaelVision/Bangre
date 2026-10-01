@@ -51,6 +51,16 @@ export type CanteenPaymentPayload = {
   notifyWhatsapp: boolean;
 };
 
+export type UniformSalePayload = {
+  studentId: string;
+  cart: { variantId: string; quantity: number }[];
+  method: string;
+  date: string;
+  receivedBy: string;
+  notifyWhatsapp: boolean;
+  delivered: boolean;
+};
+
 export type QueuedOperation =
   | { kind: "payment"; payload: PaymentPayload }
   | { kind: "student.create"; payload: StudentPayload }
@@ -61,7 +71,10 @@ export type QueuedOperation =
   | { kind: "canteen.enroll"; studentId: string; startMonth: string | null; service?: SchoolService }
   | { kind: "canteen.leave"; studentId: string; endMonth: string; service?: SchoolService }
   | { kind: "canteen.reminder"; studentId: string; message: string; service?: SchoolService }
-  | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean; service?: SchoolService };
+  | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean; service?: SchoolService }
+  | { kind: "uniform.sale"; payload: UniformSalePayload }
+  // Lines of a sale already on the server (an offline sale is handed over at the counter or after sync).
+  | { kind: "uniform.deliver"; lineIds: string[]; delivered: boolean };
 
 export type QueuedEntry = QueuedOperation & {
   id: string;
@@ -192,13 +205,15 @@ async function markRejected(entry: QueuedEntry, error: string) {
 
 /** The student an entry is about, whatever its kind. */
 function studentIdOf(entry: QueuedEntry): string | null {
-  if (entry.kind === "payment" || entry.kind === "canteen.payment") return entry.payload.studentId;
+  if (entry.kind === "payment" || entry.kind === "canteen.payment" || entry.kind === "uniform.sale") {
+    return entry.payload.studentId;
+  }
   if ("studentId" in entry) return entry.studentId;
   return null;
 }
 
 function withStudentId(entry: QueuedEntry, studentId: string): QueuedEntry {
-  if (entry.kind === "payment" || entry.kind === "canteen.payment") {
+  if (entry.kind === "payment" || entry.kind === "canteen.payment" || entry.kind === "uniform.sale") {
     return { ...entry, payload: { ...entry.payload, studentId } } as QueuedEntry;
   }
   if ("studentId" in entry) return { ...entry, studentId };

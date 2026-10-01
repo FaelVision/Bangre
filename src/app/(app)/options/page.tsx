@@ -11,7 +11,7 @@ export default async function OptionsPage() {
   const { schoolId } = await verifySession();
   const school = await prisma.school.findUniqueOrThrow({
     where: { id: schoolId },
-    select: { canteenEnabled: true, daycareEnabled: true },
+    select: { canteenEnabled: true, daycareEnabled: true, uniformsEnabled: true },
   });
 
   return (
@@ -30,6 +30,11 @@ export default async function OptionsPage() {
           service="daycare"
           enabled={school.daycareEnabled}
           description="Pour les enfants gardés par l'école (avant ou après la classe, le midi…). Réservée aux élèves de maternelle et du primaire, payée de la même façon que la cantine."
+        />
+        <ServiceOptionCard
+          service="uniforms"
+          enabled={school.uniformsEnabled}
+          description="Vendez vos tenues (scolaire, sport…) avec reçu : vous fixez les tenues, les niveaux concernés, les tailles, les prix et, si vous le voulez, le stock. Paiement en une fois et suivi des tenues à remettre."
         />
         <p className="text-[12.5px] text-(--color-text-muted) leading-relaxed">
           Désactiver une option la retire du menu ; les inscriptions et paiements déjà enregistrés sont conservés et

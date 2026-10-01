@@ -4,6 +4,7 @@ import { decryptSession } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import { currentAcademicYear, planFor } from "@/lib/canteen-core";
 import type { SchoolService } from "@/lib/services";
+import { loadUniformCatalog } from "@/lib/uniforms-core";
 
 /**
  * The whole school, in one payload: what the device keeps so that every screen
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
       blocked: true,
       canteenEnabled: true,
       daycareEnabled: true,
+      uniformsEnabled: true,
     },
   });
   if (!school) return NextResponse.json({ ok: false, error: "Compte introuvable." }, { status: 401 });
@@ -86,7 +88,16 @@ export async function GET(req: NextRequest) {
       }),
       prisma.canteenSkip.findMany({ where: { schoolId, academicYearId: canteenYearId, service } }),
     ]).then(([plan, enrollments, payments, reminders, skips]) => ({ plan, enrollments, payments, reminders, skips }));
-  const [canteen, daycare] = await Promise.all([serviceRows("canteen"), serviceRows("daycare")]);
+  const [canteen, daycare, uniformCatalog, uniformSales] = await Promise.all([
+    serviceRows("canteen"),
+    serviceRows("daycare"),
+    loadUniformCatalog(schoolId),
+    prisma.uniformSale.findMany({
+      where: { schoolId, academicYearId: canteenYearId },
+      include: { lines: true },
+      orderBy: { date: "desc" },
+    }),
+  ]);
 
   return NextResponse.json(
     {
@@ -100,6 +111,7 @@ export async function GET(req: NextRequest) {
       reminders,
       canteen,
       daycare,
+      uniforms: { catalog: uniformCatalog, sales: uniformSales },
     },
     // This is the device's private copy of its own data: never store it in a
     // shared cache, and never let the service worker serve a stale one.

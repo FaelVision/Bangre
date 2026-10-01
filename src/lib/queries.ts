@@ -3,6 +3,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { computeStudentSummary, studentQueryInclude, type StudentWithPayments } from "@/lib/tuition";
 import { canteenLateCountFor } from "@/lib/canteen-core";
+import { uniformsToDeliverFor } from "@/lib/uniforms-core";
 
 /**
  * Every active student in the school, with their class/tranches/payments
@@ -265,14 +266,18 @@ export const getPromotionOverview = cache(async (schoolId: string) => {
 });
 
 export const getSidebarCounts = cache(async (schoolId: string) => {
-  const [classesCount, studentsCount, all, canteenLateCount, daycareLateCount, options] = await Promise.all([
+  const [classesCount, studentsCount, all, canteenLateCount, daycareLateCount, uniformsToDeliver, options] = await Promise.all([
     prisma.schoolClass.count({ where: { schoolId, archived: false } }),
     prisma.student.count({ where: { schoolId, status: "active" } }),
     getActiveStudentsWithSummary(schoolId),
     canteenLateCountFor(schoolId, "canteen"),
     canteenLateCountFor(schoolId, "daycare"),
-    prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { canteenEnabled: true, daycareEnabled: true } }),
+    uniformsToDeliverFor(schoolId),
+    prisma.school.findUniqueOrThrow({
+      where: { id: schoolId },
+      select: { canteenEnabled: true, daycareEnabled: true, uniformsEnabled: true },
+    }),
   ]);
   const lateCount = all.filter((row) => row.summary.status === "retard").length;
-  return { classesCount, studentsCount, lateCount, canteenLateCount, daycareLateCount, ...options };
+  return { classesCount, studentsCount, lateCount, canteenLateCount, daycareLateCount, uniformsToDeliver, ...options };
 });

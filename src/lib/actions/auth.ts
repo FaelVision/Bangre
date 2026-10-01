@@ -94,6 +94,7 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
       // the school turns them on from its Options page.
       canteenEnabled: formData.get("canteen") === "on",
       daycareEnabled: formData.get("daycare") === "on" && daycareOffered(type),
+      uniformsEnabled: formData.get("uniforms") === "on",
       academicYears: {
         create: { label: currentAcademicYearLabel(), isCurrent: true },
       },

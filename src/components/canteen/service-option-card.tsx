@@ -4,22 +4,31 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { setServiceEnabledAction } from "@/lib/actions/canteen";
+import { setUniformsEnabledAction } from "@/lib/actions/uniforms";
 import { isNetworkError, withNetwork } from "@/lib/connectivity";
 import { serviceInfo, type SchoolService } from "@/lib/services";
 import { Badge, Card } from "@/components/ui";
 import { cn } from "@/lib/cn";
 
-/** One option of the school, with its on/off switch. Turned on without prices, it leads to them. */
+const UNIFORMS = { title: "Tenues", settingsPath: "/tenues/reglages", settingsLabel: "Catalogue" };
+
+/**
+ * One option of the school, with its on/off switch. Turned on before its
+ * prices (or its catalogue) are set, it leads to them.
+ */
 export function ServiceOptionCard({
   service,
   enabled,
   description,
 }: {
-  service: SchoolService;
+  service: SchoolService | "uniforms";
   enabled: boolean;
   description: string;
 }) {
-  const info = serviceInfo(service);
+  const info =
+    service === "uniforms"
+      ? UNIFORMS
+      : { title: serviceInfo(service).title, settingsPath: `${serviceInfo(service).path}/reglages`, settingsLabel: "Tarifs" };
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -28,8 +37,14 @@ export function ServiceOptionCard({
     setError(null);
     startTransition(async () => {
       try {
-        const res = await withNetwork(() => setServiceEnabledAction(service, !enabled), 15000);
-        if (res.needsPrices) router.push(`${info.path}/reglages`);
+        const res = await withNetwork(
+          () =>
+            service === "uniforms"
+              ? setUniformsEnabledAction(!enabled).then((r) => ({ needsSetup: r.needsCatalog }))
+              : setServiceEnabledAction(service, !enabled).then((r) => ({ needsSetup: r.needsPrices })),
+          15000
+        );
+        if (res.needsSetup) router.push(info.settingsPath);
         else router.refresh();
       } catch (err) {
         if (!isNetworkError(err)) throw err;
@@ -51,10 +66,10 @@ export function ServiceOptionCard({
         <div className="flex gap-2 items-center">
           {enabled && (
             <Link
-              href={`${info.path}/reglages`}
+              href={info.settingsPath}
               className="h-[38px] rounded-[9px] border border-(--color-border-strong) bg-white flex items-center px-3.5 text-[13px] font-semibold no-underline hover:no-underline"
             >
-              Tarifs
+              {info.settingsLabel}
             </Link>
           )}
           <button

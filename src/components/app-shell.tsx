@@ -13,6 +13,8 @@ export type ShellCounts = {
   daycareLateCount?: number;
   canteenEnabled?: boolean;
   daycareEnabled?: boolean;
+  uniformsEnabled?: boolean;
+  uniformsToDeliver?: number;
 };
 
 /**

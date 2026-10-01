@@ -41,6 +41,9 @@ export function Sidebar({
     /** The school's options: their tab shows only once turned on (page Options). */
     canteenEnabled?: boolean;
     daycareEnabled?: boolean;
+    uniformsEnabled?: boolean;
+    /** Tenues paid and still to hand over. */
+    uniformsToDeliver?: number;
   };
   /** Drawer state below `lg`; ignored on large screens where the column is permanent. */
   open?: boolean;
@@ -63,6 +66,7 @@ export function Sidebar({
     ...(counts.daycareEnabled
       ? [{ href: "/garde", label: "Garde d'enfants", count: counts.daycareLateCount || undefined, badgeTone: "danger" as const }]
       : []),
+    ...(counts.uniformsEnabled ? [{ href: "/tenues", label: "Tenues", count: counts.uniformsToDeliver || undefined }] : []),
     { href: "/passage-annee", label: "Passage d'année" },
   ];
 

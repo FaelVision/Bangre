@@ -3,15 +3,16 @@ import { formatCFA, formatDate } from "@/lib/format";
 
 const styles = StyleSheet.create({
   page: { padding: 26, fontFamily: "Helvetica" },
-  card: { border: "1pt solid #DFD8CC", borderRadius: 6, padding: 20, width: 300 },
+  card: { border: "1pt solid #DFD8CC", borderRadius: 6, padding: 20, width: "100%" },
   center: { textAlign: "center" },
   eyebrow: { fontSize: 9, color: "#8A8278", letterSpacing: 1 },
   schoolName: { fontSize: 13, fontWeight: 700, marginTop: 4 },
   meta: { fontSize: 9, color: "#8A8278", marginTop: 2 },
   divider: { borderBottomWidth: 1, borderBottomColor: "#DFD8CC", borderStyle: "dashed", marginVertical: 12 },
   row: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6, fontSize: 10 },
-  label: { color: "#8A8278" },
-  value: { fontWeight: 700 },
+  label: { color: "#8A8278", flexShrink: 0, marginRight: 10 },
+  // A long objet (several tenues…) wraps instead of running off the card.
+  value: { fontWeight: 700, flex: 1, textAlign: "right" },
   amountLabel: { fontSize: 10, color: "#8A8278" },
   amountValue: { fontSize: 16, fontWeight: 700 },
   footer: { fontSize: 8.5, color: "#8A8278", marginTop: 18, textAlign: "right" },
@@ -34,7 +35,8 @@ export type ReceiptPdfProps = {
   objet: string;
   method: string;
   amount: number;
-  remaining: number;
+  /** Null: paid in full by nature (tenues) — no balance line. */
+  remaining: number | null;
   receivedBy: string;
   /** "REÇU DE PAIEMENT" unless given — the canteen receipts say what they are for. */
   title?: string;
@@ -84,10 +86,12 @@ function ReceiptPdf(props: ReceiptPdfProps) {
             <Text style={styles.amountLabel}>Montant</Text>
             <Text style={styles.amountValue}>{pdfCFA(props.amount)}</Text>
           </View>
-          <View style={styles.row}>
-            <Text style={styles.amountLabel}>{props.remainingLabel ?? "Reste dû"}</Text>
-            <Text style={{ fontSize: 11, fontWeight: 700 }}>{pdfCFA(props.remaining)}</Text>
-          </View>
+          {props.remaining != null && (
+            <View style={styles.row}>
+              <Text style={styles.amountLabel}>{props.remainingLabel ?? "Reste dû"}</Text>
+              <Text style={{ fontSize: 11, fontWeight: 700 }}>{pdfCFA(props.remaining)}</Text>
+            </View>
+          )}
 
           <Text style={styles.footer}>Cachet & signature ___________</Text>
         </View>

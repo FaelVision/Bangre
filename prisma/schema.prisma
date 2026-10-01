@@ -17,66 +17,72 @@ datasource db {
 // A School is the single account/tenant. One login per établissement.
 // ---------------------------------------------------------------------------
 model School {
-  id                    String    @id @default(cuid())
-  name                  String
-  city                  String?
-  type                  String? // Primaire | Collège | Lycée | Franco-arabe...
-  contactName           String
-  phone                 String?   @unique
-  email                 String?   @unique
-  passwordHash          String
-  createdAt             DateTime  @default(now())
+  id           String   @id @default(cuid())
+  name         String
+  city         String?
+  type         String? // Primaire | Collège | Lycée | Franco-arabe...
+  contactName  String
+  phone        String?  @unique
+  email        String?  @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
 
   // Google sign-in: set once an account is linked to a Google identity.
-  googleId              String?   @unique
-  avatarUrl             String?
+  googleId  String? @unique
+  avatarUrl String?
 
   // unpaid | active. There is no free trial any more: only "active" with a
   // renewal date still ahead opens the app. "trial" rows and trialEndsAt are
   // what the former 14-day trial left behind, kept so no migration is needed.
-  subscriptionStatus    String    @default("trial")
-  trialEndsAt           DateTime?
-  subscriptionRenewsAt  DateTime?
+  subscriptionStatus   String    @default("trial")
+  trialEndsAt          DateTime?
+  subscriptionRenewsAt DateTime?
 
   // Suspension by the platform administrator. A blocked school can still sign
   // in but only sees the suspension notice — its data is left untouched.
-  blocked               Boolean   @default(false)
-  blockedReason         String?
-  blockedAt             DateTime?
+  blocked       Boolean   @default(false)
+  blockedReason String?
+  blockedAt     DateTime?
 
   // One sequence shared by tuition and canteen receipts, so a receipt number
   // never designates two payments.
-  receiptCounter        Int       @default(0)
+  receiptCounter Int @default(0)
 
   // The canteen is an option. Turning it off hides nothing that was recorded:
   // its prices, enrolments and payments stay, ready for when it is back on.
-  canteenEnabled        Boolean   @default(false)
+  canteenEnabled  Boolean @default(false)
   // Garde d'enfants: the same option, for the maternelle and primaire pupils.
-  daycareEnabled        Boolean   @default(false)
+  daycareEnabled  Boolean @default(false)
+  // Tenues: the school sells its uniforms through Bangré (catalogue, receipts, remise).
+  uniformsEnabled Boolean @default(false)
 
-  academicYears         AcademicYear[]
-  classes               SchoolClass[]
-  students              Student[]
-  payments              Payment[]
-  reminders             Reminder[]
-  subscriptionPayments  SubscriptionPayment[]
-  syncLogEntries        SyncLogEntry[]
-  adminMessages         AdminMessage[]
-  errorLogs             ErrorLog[]
-  passwordResetTokens   PasswordResetToken[]
-  canteenPlans          CanteenPlan[]
-  canteenEnrollments    CanteenEnrollment[]
-  canteenPayments       CanteenPayment[]
-  canteenReminders      CanteenReminder[]
-  canteenSkips          CanteenSkip[]
-  canteenActions        CanteenAction[]
+  academicYears        AcademicYear[]
+  classes              SchoolClass[]
+  students             Student[]
+  payments             Payment[]
+  reminders            Reminder[]
+  subscriptionPayments SubscriptionPayment[]
+  syncLogEntries       SyncLogEntry[]
+  adminMessages        AdminMessage[]
+  errorLogs            ErrorLog[]
+  passwordResetTokens  PasswordResetToken[]
+  canteenPlans         CanteenPlan[]
+  canteenEnrollments   CanteenEnrollment[]
+  canteenPayments      CanteenPayment[]
+  canteenReminders     CanteenReminder[]
+  canteenSkips         CanteenSkip[]
+  canteenActions       CanteenAction[]
+  uniformItems         UniformItem[]
+  uniformSales         UniformSale[]
 }
 
-/** A one-time link sent to a school to let them set a new password. */
+/**
+ * A one-time link sent to a school to let them set a new password.
+ */
 model PasswordResetToken {
-  id        String    @id @default(cuid())
-  schoolId  String
-  school    School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   // Only the hash is stored — the raw token lives in the link sent to the
   // school and is never persisted, so a database leak can't be replayed.
@@ -92,23 +98,25 @@ model PasswordResetToken {
 // Platform side: the operator of Bangré, not a school.
 // ---------------------------------------------------------------------------
 model Admin {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   name         String
-  phone        String   @unique
+  phone        String    @unique
   passwordHash String
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
 
-  messages     AdminMessage[]
+  messages AdminMessage[]
 }
 
-/** A message sent by the administrator to a school's account manager. */
+/**
+ * A message sent by the administrator to a school's account manager.
+ */
 model AdminMessage {
-  id        String   @id @default(cuid())
-  adminId   String
-  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  adminId  String
+  admin    Admin  @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   channel   String   @default("whatsapp")
   toPhone   String
@@ -122,20 +130,20 @@ model AdminMessage {
  * recurring crash shows as one entry with an occurrence count.
  */
 model ErrorLog {
-  id          String    @id @default(cuid())
-  fingerprint String    @unique
+  id          String @id @default(cuid())
+  fingerprint String @unique
 
-  message     String
-  stack       String?
-  digest      String? // the code shown on Next's error screen
-  route       String? // route file path, e.g. /(auth)/inscription
-  path        String? // requested URL path
-  method      String?
-  source      String    @default("server") // server | client
-  kind        String? // render | route | action | proxy
+  message String
+  stack   String?
+  digest  String? // the code shown on Next's error screen
+  route   String? // route file path, e.g. /(auth)/inscription
+  path    String? // requested URL path
+  method  String?
+  source  String  @default("server") // server | client
+  kind    String? // render | route | action | proxy
 
-  schoolId    String?
-  school      School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
   count       Int       @default(1)
   firstSeenAt DateTime  @default(now())
@@ -151,7 +159,7 @@ model AcademicYear {
   isCurrent Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  classes   SchoolClass[]
+  classes            SchoolClass[]
   canteenPlans       CanteenPlan[]
   canteenEnrollments CanteenEnrollment[]
   canteenPayments    CanteenPayment[]
@@ -161,108 +169,109 @@ model AcademicYear {
 }
 
 model SchoolClass {
-  id                      String   @id @default(cuid())
-  schoolId                String
-  school                  School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  academicYearId          String
-  academicYear            AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  schoolId       String
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
-  name                    String // "6e A"
-  level                   String // Primaire | Collège | Lycée
-  order                   Int      @default(0) // CP1..Terminale ordering
+  name  String // "6e A"
+  level String // Primaire | Collège | Lycée
+  order Int    @default(0) // CP1..Terminale ordering
 
-  tuitionAmount           Int?
-  registrationFee         Int?
+  tuitionAmount   Int?
+  registrationFee Int?
 
-  reminderEnabled         Boolean  @default(true)
-  reminderBeforeDays      Int      @default(7)
-  reminderAfterDays       String   @default("3,10") // csv of day offsets
-  reminderHour            String   @default("08:00")
+  reminderEnabled         Boolean @default(true)
+  reminderBeforeDays      Int     @default(7)
+  reminderAfterDays       String  @default("3,10") // csv of day offsets
+  reminderHour            String  @default("08:00")
   reminderMessageTemplate String?
 
-  archived                Boolean  @default(false)
+  archived Boolean @default(false)
 
-  createdAt               DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  tranches                Tranche[]
-  students                Student[]
+  tranches Tranche[]
+  students Student[]
 
   @@unique([schoolId, academicYearId, name])
 }
 
 model Tranche {
-  id        String   @id @default(cuid())
-  classId   String
-  class     SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  id      String      @id @default(cuid())
+  classId String
+  class   SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
 
-  label     String // "1re tranche"
-  amount    Int
+  label   String // "1re tranche"
+  amount  Int
   // "tuition": a normal instalment whose amounts must sum to the class total.
   // "registration": the one-off enrolment fee, added on top of the tuition and
   // always ordered first (order 0) so a partial payment clears it before tranches.
-  kind      String   @default("tuition")
-  dueType   String // date | end_of_month | end_of_term
-  dueDate   DateTime
-  order     Int      @default(0)
+  kind    String   @default("tuition")
+  dueType String // date | end_of_month | end_of_term
+  dueDate DateTime
+  order   Int      @default(0)
 
   allocations PaymentAllocation[]
   reminders   Reminder[]
 }
 
 model Student {
-  id             String   @id @default(cuid())
-  schoolId       String
-  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  classId        String
-  class          SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  id       String      @id @default(cuid())
+  schoolId String
+  school   School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classId  String
+  class    SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
 
-  matricule      String
-  lastName       String
-  firstName      String
-  birthDate      DateTime?
-  gender         String? // M | F
+  matricule String
+  lastName  String
+  firstName String
+  birthDate DateTime?
+  gender    String? // M | F
 
   parentName     String?
   parentPhone    String?
-  whatsappStatus String   @default("unknown") // reachable | unreachable | invalid | unknown
+  whatsappStatus String  @default("unknown") // reachable | unreachable | invalid | unknown
 
-  status         String   @default("active") // active | repeating | transferred | left
+  status          String @default("active") // active | repeating | transferred | left
   tuitionOverride Int?
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  payments       Payment[]
-  reminders      Reminder[]
+  payments           Payment[]
+  reminders          Reminder[]
   promotionDecisions PromotionDecision[]
   canteenEnrollments CanteenEnrollment[]
   canteenPayments    CanteenPayment[]
   canteenReminders   CanteenReminder[]
   canteenSkips       CanteenSkip[]
   canteenActions     CanteenAction[]
+  uniformSales       UniformSale[]
 
   @@unique([schoolId, matricule])
 }
 
 model Payment {
-  id             String   @id @default(cuid())
-  schoolId       String
-  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  studentId      String
-  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  amount         Int
-  method         String   @default("cash") // cash | mobile_money | bank
-  receivedBy     String?
-  date           DateTime @default(now())
-  receiptNumber  Int
-  note           String?
+  amount        Int
+  method        String   @default("cash") // cash | mobile_money | bank
+  receivedBy    String?
+  date          DateTime @default(now())
+  receiptNumber Int
+  note          String?
 
-  offlineCreated Boolean  @default(false)
-  synced         Boolean  @default(true)
+  offlineCreated Boolean @default(false)
+  synced         Boolean @default(true)
 
   whatsappNotified Boolean @default(false)
 
-  allocations    PaymentAllocation[]
+  allocations PaymentAllocation[]
 
   @@unique([schoolId, receiptNumber])
 }
@@ -277,34 +286,34 @@ model PaymentAllocation {
 }
 
 model Reminder {
-  id         String   @id @default(cuid())
-  schoolId   String
-  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  studentId  String
-  student    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   // The tranche this reminder was about, when it is a payment reminder.
-  trancheId  String?
-  tranche    Tranche? @relation(fields: [trancheId], references: [id], onDelete: SetNull)
+  trancheId String?
+  tranche   Tranche? @relation(fields: [trancheId], references: [id], onDelete: SetNull)
 
-  channel    String   @default("whatsapp")
-  trigger    String   @default("manual")
+  channel           String   @default("whatsapp")
+  trigger           String   @default("manual")
   // Always "sent" today: a reminder is recorded once its wa.me link is
   // prepared and shown to the user, who sends it themselves from WhatsApp.
   // No delivery/read tracking without a WhatsApp Business API account.
-  status     String   @default("sent")
+  status            String   @default("sent")
   providerMessageId String?
-  message    String
-  sentAt     DateTime @default(now())
+  message           String
+  sentAt            DateTime @default(now())
 
   @@index([schoolId, sentAt])
   @@index([studentId, trancheId, trigger])
 }
 
 model SubscriptionPayment {
-  id        String   @id @default(cuid())
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
 
   amount    Int
   provider  String // orange_money | moov_money
@@ -325,13 +334,13 @@ model PromotionDecision {
 }
 
 model SyncLogEntry {
-  id        String   @id @default(cuid())
-  schoolId  String
-  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  entity    String
-  entityId  String
-  action    String
-  syncedAt  DateTime @default(now())
+  id       String   @id @default(cuid())
+  schoolId String
+  school   School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  entity   String
+  entityId String
+  action   String
+  syncedAt DateTime @default(now())
 }
 
 // ---------------------------------------------------------------------------
@@ -342,40 +351,44 @@ model SyncLogEntry {
 // not by indexes: a production schema push may only add, never re-key.
 // ---------------------------------------------------------------------------
 
-/** The canteen prices and calendar of one academic year. */
+/**
+ * The canteen prices and calendar of one academic year.
+ */
 model CanteenPlan {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   schoolId       String
-  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  service        String   @default("canteen")
+  service        String       @default("canteen")
 
-  monthlyPrice   Int
+  monthlyPrice Int
   // Price of every month of the year paid at once. Null: no annual price.
-  annualPrice    Int?
-  firstMonth     String // "2026-10"
-  lastMonth      String // "2027-06"
+  annualPrice  Int?
+  firstMonth   String // "2026-10"
+  lastMonth    String // "2027-06"
   // A month not paid by this day of the month is late.
-  dueDay         Int      @default(5)
+  dueDay       Int    @default(5)
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  packages       CanteenPackage[]
+  packages CanteenPackage[]
 
   @@index([schoolId, academicYearId])
 }
 
-/** A price the school sets for several months paid together ("1er trimestre"). */
+/**
+ * A price the school sets for several months paid together ("1er trimestre").
+ */
 model CanteenPackage {
-  id      String      @id @default(cuid())
-  planId  String
-  plan    CanteenPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  id     String      @id @default(cuid())
+  planId String
+  plan   CanteenPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  label   String
-  months  String // csv of "YYYY-MM"
-  price   Int
-  order   Int         @default(0)
+  label  String
+  months String // csv of "YYYY-MM"
+  price  Int
+  order  Int    @default(0)
 }
 
 /**
@@ -383,62 +396,64 @@ model CanteenPackage {
  * comes back has two rows; `endMonth` null means still enrolled.
  */
 model CanteenEnrollment {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   schoolId       String
-  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentId      String
-  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  service        String   @default("canteen")
+  service        String       @default("canteen")
 
-  startMonth     String
-  endMonth       String?
+  startMonth String
+  endMonth   String?
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([schoolId, academicYearId])
   @@index([studentId])
 }
 
 model CanteenPayment {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   schoolId       String
-  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentId      String
-  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  service        String   @default("canteen")
+  service        String       @default("canteen")
 
-  amount         Int
+  amount        Int
   // What the receipt says was paid: "Octobre 2026 à décembre 2026", "Année complète"…
-  label          String
-  method         String   @default("cash")
-  receivedBy     String?
-  date           DateTime @default(now())
-  receiptNumber  Int
+  label         String
+  method        String   @default("cash")
+  receivedBy    String?
+  date          DateTime @default(now())
+  receiptNumber Int
   // Device outbox id of a payment replayed from offline, to recognise a replay.
-  clientRef      String?
+  clientRef     String?
 
-  offlineCreated Boolean  @default(false)
-  synced         Boolean  @default(true)
+  offlineCreated   Boolean @default(false)
+  synced           Boolean @default(true)
   whatsappNotified Boolean @default(false)
 
   // A payment entered by mistake is cancelled, never deleted: it stays in the
   // journal marked "Annulé", its receipt number is not reused, and its months
   // are owed again.
-  cancelledAt    DateTime?
-  cancelReason   String?
+  cancelledAt  DateTime?
+  cancelReason String?
 
-  months         CanteenPaymentMonth[]
+  months CanteenPaymentMonth[]
 
   @@unique([schoolId, receiptNumber])
   @@index([schoolId, academicYearId])
   @@index([schoolId, clientRef])
 }
 
-/** The share of a canteen payment that settles one month. */
+/**
+ * The share of a canteen payment that settles one month.
+ */
 model CanteenPaymentMonth {
   id        String         @id @default(cuid())
   paymentId String
@@ -452,16 +467,16 @@ model CanteenPaymentMonth {
  * family said so). It is not owed and never late; the student stays enrolled.
  */
 model CanteenSkip {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   schoolId       String
-  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school         School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentId      String
-  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  service        String   @default("canteen")
+  service        String       @default("canteen")
   month          String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
   @@index([studentId, academicYearId, month])
   @@index([schoolId, academicYearId])
@@ -470,44 +485,135 @@ model CanteenSkip {
 /**
  * The canteen history: one row per change made to a student's canteen, with
  * what it takes to put things back. The day it was made, it can be undone.
- *
  * kind / data:
- *   payment  { paymentId }
- *   enroll   { enrollmentId }
- *   leave    { enrollmentId, startMonth, endMonth, cancelled }  (cancelled: the stretch was deleted)
- *   skip     { month, skipped }
- *   start    { enrollmentId, from, to }
+ * payment  { paymentId }
+ * enroll   { enrollmentId }
+ * leave    { enrollmentId, startMonth, endMonth, cancelled }  (cancelled: the stretch was deleted)
+ * skip     { month, skipped }
+ * start    { enrollmentId, from, to }
  */
 model CanteenAction {
-  id             String    @id @default(cuid())
+  id             String  @id @default(cuid())
   schoolId       String
-  school         School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  school         School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentId      String
-  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student        Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   academicYearId String
-  service        String   @default("canteen")
+  service        String  @default("canteen")
 
-  kind           String
-  data           String // JSON
-  label          String // what the history shows: "Paiement 14 000 CFA · 1er trimestre"
-  createdAt      DateTime  @default(now())
+  kind      String
+  data      String // JSON
+  label     String // what the history shows: "Paiement 14 000 CFA · 1er trimestre"
+  createdAt DateTime @default(now())
 
-  undoneAt       DateTime?
-  undoReason     String?
+  undoneAt   DateTime?
+  undoReason String?
 
   @@index([schoolId, createdAt])
 }
 
-/** A WhatsApp rappel about unpaid canteen (or garde) months, kept apart from tuition rappels. */
+/**
+ * A WhatsApp rappel about unpaid canteen (or garde) months, kept apart from tuition rappels.
+ */
 model CanteenReminder {
   id        String   @id @default(cuid())
   schoolId  String
   school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   studentId String
   student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  service        String   @default("canteen")
+  service   String   @default("canteen")
   message   String
   sentAt    DateTime @default(now())
 
   @@index([schoolId, sentAt])
+}
+
+// ---------------------------------------------------------------------------
+// Tenues. The school's own catalogue: each tenue comes in one or more sizes,
+// each with its price and, if the school tracks it, its stock. A sale is paid
+// in full at once; each line is "à remettre" until the tenue is handed over.
+// ---------------------------------------------------------------------------
+
+model UniformItem {
+  id       String @id @default(cuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  name       String // "Tenue scolaire"
+  // csv of class levels it is sold to ("Maternelle,Primaire"); empty: every level.
+  levels     String   @default("")
+  trackStock Boolean  @default(false)
+  order      Int      @default(0)
+  // Removed from the catalogue after being sold: kept for the receipts.
+  archived   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  variants  UniformVariant[]
+  saleLines UniformSaleLine[]
+
+  @@index([schoolId])
+}
+
+/**
+ * One size of a tenue ("" when the tenue has no sizes), with its price and stock.
+ */
+model UniformVariant {
+  id       String      @id @default(cuid())
+  itemId   String
+  item     UniformItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  size     String      @default("")
+  price    Int
+  // Pieces left, when the tenue tracks its stock.
+  stock    Int         @default(0)
+  order    Int         @default(0)
+  archived Boolean     @default(false)
+
+  saleLines UniformSaleLine[]
+}
+
+model UniformSale {
+  id             String  @id @default(cuid())
+  schoolId       String
+  school         School  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId String
+
+  amount           Int
+  method           String   @default("cash")
+  receivedBy       String?
+  date             DateTime @default(now())
+  receiptNumber    Int
+  clientRef        String?
+  offlineCreated   Boolean  @default(false)
+  synced           Boolean  @default(true)
+  whatsappNotified Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  // Cancelled the day it was made (wrong student, wrong size): kept, marked
+  // "Annulé", its pieces back in stock.
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  lines UniformSaleLine[]
+
+  @@index([schoolId, academicYearId])
+  @@index([schoolId, clientRef])
+}
+
+model UniformSaleLine {
+  id          String         @id @default(cuid())
+  saleId      String
+  sale        UniformSale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        UniformItem    @relation(fields: [itemId], references: [id])
+  variantId   String
+  variant     UniformVariant @relation(fields: [variantId], references: [id])
+  // What the receipt says, as it was sold: "Tenue scolaire · 8 ans".
+  label       String
+  quantity    Int
+  unitPrice   Int
+  amount      Int
+  // Null: paid, still to hand over.
+  deliveredAt DateTime?
 }

@@ -15,6 +15,7 @@ import {
   type CanteenPaymentInput,
 } from "@/lib/canteen-core";
 import { parseService, type SchoolService } from "@/lib/services";
+import { persistUniformSale, setUniformDelivered, type UniformSaleInput } from "@/lib/uniforms-core";
 
 /** Every entry of the device outbox carries these, whatever its kind. */
 type Envelope = { id?: string; schoolId?: string };
@@ -31,6 +32,8 @@ type Body = Envelope &
     | { kind: "canteen.leave"; studentId: string; endMonth: string; service?: SchoolService }
     | { kind: "canteen.reminder"; studentId: string; message: string; service?: SchoolService }
     | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean; service?: SchoolService }
+    | { kind: "uniform.sale"; payload: UniformSaleInput }
+    | { kind: "uniform.deliver"; lineIds: string[]; delivered: boolean }
   );
 
 /** A replay of this entry within that window is the same entry sent twice, not a new one. */
@@ -189,6 +192,20 @@ export async function POST(req: NextRequest) {
         if (replayed) return NextResponse.json({ ok: true, reminderId: replayed.id });
         return NextResponse.json(await recordCanteenReminder(schoolId, body.studentId, body.message, service));
       }
+
+      case "uniform.sale": {
+        const result = await persistUniformSale(schoolId, {
+          ...body.payload,
+          offlineCreated: true,
+          clientRef: body.id ? `sync:${body.id}` : undefined,
+        });
+        if (result.ok) return NextResponse.json(result);
+        return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
+      }
+
+      // Sets a state (handed over or not): a replay leaves it as it is.
+      case "uniform.deliver":
+        return NextResponse.json(await setUniformDelivered(schoolId, body.lineIds, Boolean(body.delivered)));
 
       default:
         return NextResponse.json({ ok: false, error: "Opération inconnue.", permanent: true }, { status: 400 });

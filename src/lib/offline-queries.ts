@@ -2,6 +2,8 @@ import type { Reminder, Tranche } from "@prisma/client";
 import { computeStudentSummary, type StudentSummary, type StudentWithPayments } from "@/lib/tuition";
 import { canteenDataset, findStudentWithPayments, studentsWithPayments, type MirrorData } from "@/lib/offline-data";
 import { canteenLateCount } from "@/lib/canteen-overview";
+import { uniformsToDeliverCount } from "@/lib/uniforms-overview";
+import { uniformDataset } from "@/lib/offline-data";
 
 /**
  * The same figures the server computes in `queries.ts`, computed on the device
@@ -40,8 +42,10 @@ export function sidebarCounts(data: MirrorData, now: Date = new Date()) {
     lateCount: rows.filter((r) => r.summary.status === "retard").length,
     canteenLateCount: canteenLateCount(canteenDataset(data, "canteen"), now),
     daycareLateCount: canteenLateCount(canteenDataset(data, "daycare"), now),
+    uniformsToDeliver: uniformsToDeliverCount(uniformDataset(data)),
     canteenEnabled: data.school.canteenEnabled,
     daycareEnabled: data.school.daycareEnabled,
+    uniformsEnabled: data.school.uniformsEnabled,
   };
 }
 

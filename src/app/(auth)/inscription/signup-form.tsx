@@ -76,6 +76,9 @@ export function SignupForm({
               <OptionBox name="canteen" title="Cantine">
                 Les élèves inscrits paient la cantine au mois, en forfaits ou à l&apos;année.
               </OptionBox>
+              <OptionBox name="uniforms" title="Tenues">
+                Vente des tenues avec reçu : vous fixez les tenues, tailles, prix et, si vous le voulez, le stock.
+              </OptionBox>
               {daycareOffered(type) && (
                 <OptionBox name="daycare" title="Garde d'enfants">
                   Pour les élèves de maternelle et du primaire gardés par l&apos;école, payée de la même façon.

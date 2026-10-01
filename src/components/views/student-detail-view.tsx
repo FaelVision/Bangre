@@ -6,6 +6,8 @@ import { PayButton } from "@/components/pay-button";
 import type { StudentSummary } from "@/lib/tuition";
 import type { CanteenStudentCard } from "@/lib/canteen-overview";
 import { StudentCanteenCard } from "@/components/canteen/student-canteen-card";
+import type { UniformStudentCard } from "@/lib/uniforms-overview";
+import { StudentUniformsCard } from "@/components/uniforms/student-uniforms-card";
 
 const trancheTone = { paid: "success", late: "danger", partial: "gold", pending: "neutral" } as const;
 const trancheLabel = { paid: "Payée", late: "En retard", partial: "Partielle", pending: "En attente" } as const;
@@ -45,6 +47,7 @@ export function StudentDetailView({
   data,
   canteen = null,
   daycare = null,
+  uniforms = null,
   offline = false,
 }: {
   data: StudentDetailData;
@@ -52,6 +55,8 @@ export function StudentDetailView({
   canteen?: CanteenStudentCard | null;
   /** The garde d'enfants card, when the school runs it and the pupil's class may take it. */
   daycare?: CanteenStudentCard | null;
+  /** The tenues bought, when the school sells them. */
+  uniforms?: UniformStudentCard | null;
   offline?: boolean;
 }) {
   const { student, summary } = data;
@@ -176,6 +181,13 @@ export function StudentDetailView({
 
           {daycare && (
             <StudentCanteenCard card={daycare} student={{ id: student.id, label: `${student.lastName} ${student.firstName}` }} />
+          )}
+          {uniforms && (
+            <StudentUniformsCard
+              card={uniforms}
+              student={{ id: student.id, label: `${student.lastName} ${student.firstName}` }}
+              offline={offline}
+            />
           )}
           {canteen && (
             <StudentCanteenCard card={canteen} student={{ id: student.id, label: `${student.lastName} ${student.firstName}` }} />

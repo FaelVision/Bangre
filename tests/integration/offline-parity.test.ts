@@ -57,6 +57,7 @@ async function buildSnapshot(id: string) {
         blocked: true,
         canteenEnabled: true,
         daycareEnabled: true,
+        uniformsEnabled: true,
       },
     }),
     prisma.academicYear.findFirst({ where: { schoolId: id, isCurrent: true } }),
@@ -211,7 +212,9 @@ test("barre latérale : mêmes compteurs", async () => {
     lateCount: server.lateCount,
     canteenLateCount: server.canteenLateCount,
     daycareLateCount: server.daycareLateCount,
+    uniformsToDeliver: server.uniformsToDeliver,
     canteenEnabled: server.canteenEnabled,
     daycareEnabled: server.daycareEnabled,
+    uniformsEnabled: server.uniformsEnabled,
   });
 });

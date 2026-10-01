@@ -27,6 +27,8 @@ import {
 import type { CanteenDataset } from "@/lib/canteen-overview";
 import { levelAllowed, parseService, type SchoolService } from "@/lib/services";
 import type { QueuedEntry } from "@/lib/offline-queue";
+import { quoteUniformSale, type UniformItemWithVariants, type UniformSaleWithLines } from "@/lib/uniforms";
+import type { UniformDataset } from "@/lib/uniforms-overview";
 
 /**
  * The device's own copy of the school's data, and the rules for reading it.
@@ -49,6 +51,7 @@ export type MirrorSchool = {
   blocked: boolean;
   canteenEnabled: boolean;
   daycareEnabled: boolean;
+  uniformsEnabled: boolean;
 };
 
 export type MirrorData = {
@@ -62,6 +65,8 @@ export type MirrorData = {
   canteen: MirrorCanteen;
   /** The garde d'enfants: same shape as the canteen. */
   daycare: MirrorCanteen;
+  /** Les tenues: the catalogue (with its stock) and this year's sales. */
+  uniforms: { catalog: UniformItemWithVariants[]; sales: UniformSaleWithLines[] };
 };
 
 /**
@@ -101,6 +106,7 @@ type RawSnapshot = {
   reminders: Record<string, unknown>[];
   canteen?: RawService;
   daycare?: RawService;
+  uniforms?: { catalog: Record<string, unknown>[]; sales: Record<string, unknown>[] };
 };
 
 type RawService = {
@@ -126,6 +132,7 @@ export function reviveSnapshot(raw: unknown): MirrorData {
       subscriptionRenewsAt: optionalDate(snapshot.school.subscriptionRenewsAt),
       canteenEnabled: snapshot.school.canteenEnabled === true,
       daycareEnabled: snapshot.school.daycareEnabled === true,
+      uniformsEnabled: snapshot.school.uniformsEnabled === true,
     },
     academicYear: snapshot.academicYear,
     classes: snapshot.classes.map((c) => ({
@@ -152,6 +159,50 @@ export function reviveSnapshot(raw: unknown): MirrorData {
     })),
     canteen: reviveCanteen(snapshot.canteen),
     daycare: reviveCanteen(snapshot.daycare),
+    uniforms: reviveUniforms(snapshot.uniforms),
+  };
+}
+
+function reviveUniforms(raw: RawSnapshot["uniforms"]): MirrorData["uniforms"] {
+  if (!raw) return { catalog: [], sales: [] };
+  return {
+    catalog: raw.catalog.map((i) => ({
+      ...(i as unknown as UniformItemWithVariants),
+      createdAt: date(i.createdAt),
+      variants: ((i.variants ?? []) as unknown as UniformItemWithVariants["variants"]).map((v) => ({ ...v })),
+    })),
+    sales: raw.sales.map((s) => ({
+      ...(s as unknown as UniformSaleWithLines),
+      date: date(s.date),
+      createdAt: date(s.createdAt),
+      cancelledAt: optionalDate(s.cancelledAt),
+      lines: ((s.lines ?? []) as Record<string, unknown>[]).map((l) => ({
+        ...(l as unknown as UniformSaleWithLines["lines"][number]),
+        deliveredAt: optionalDate(l.deliveredAt),
+      })),
+    })),
+  };
+}
+
+/** The Tenues screens' input, read from the device copy. */
+export function uniformDataset(data: MirrorData): UniformDataset {
+  const classById = new Map(data.classes.map((c) => [c.id, c]));
+  return {
+    enabled: data.school.uniformsEnabled,
+    schoolName: data.school.name,
+    contactName: data.school.contactName,
+    receiptCounter: data.school.receiptCounter,
+    yearLabel: data.academicYear?.label ?? "",
+    catalog: data.uniforms.catalog,
+    students: data.students
+      .filter((s) => classById.has(s.classId))
+      .map((s) => {
+        const clazz = classById.get(s.classId)!;
+        return { ...s, class: { name: clazz.name, level: clazz.level } };
+      }),
+    sales: data.uniforms.sales,
+    // Cancelling a sale is done online.
+    online: false,
   };
 }
 
@@ -282,6 +333,11 @@ export function applyPendingOperations(
     reminders: data.reminders.slice(),
     canteen: copyBox(data.canteen),
     daycare: copyBox(data.daycare),
+    uniforms: {
+      // Stock changes with each sale typed offline: copy what is touched.
+      catalog: data.uniforms.catalog.map((i) => ({ ...i, variants: i.variants.map((v) => ({ ...v })) })),
+      sales: data.uniforms.sales.map((s) => ({ ...s, lines: s.lines.map((l) => ({ ...l })) })),
+    },
   };
 
   const mine = entries.filter(
@@ -495,6 +551,60 @@ export function applyPendingOperations(
           message: entry.message,
           sentAt: new Date(entry.createdAt),
         });
+        break;
+      }
+
+      // Tenues, as `uniforms-core.ts` records them. A sale typed offline was
+      // paid at the counter: recorded whatever the stock, like the server does.
+      case "uniform.sale": {
+        if (!result.school.uniformsEnabled) break;
+        const payload = entry.payload;
+        const student = result.students.find((s) => s.id === payload.studentId);
+        const level = result.classes.find((c) => c.id === student?.classId)?.level;
+        if (!student) break;
+        const quote = quoteUniformSale(result.uniforms.catalog, payload.cart, level, { ignoreStock: true });
+        if (!quote.ok) break;
+        const saleId = `${LOCAL_ID_PREFIX}${entry.id}`;
+        const created = new Date(entry.createdAt);
+        for (const line of quote.lines) {
+          const item = result.uniforms.catalog.find((i) => i.id === line.itemId);
+          const variant = item?.variants.find((v) => v.id === line.variantId);
+          if (item?.trackStock && variant) variant.stock -= line.quantity;
+        }
+        result.uniforms.sales.unshift({
+          id: saleId,
+          schoolId: data.school.id,
+          studentId: student.id,
+          academicYearId: data.academicYear?.id ?? "",
+          amount: quote.amount,
+          method: payload.method || "cash",
+          receivedBy: payload.receivedBy || null,
+          date: payload.date ? new Date(payload.date) : created,
+          receiptNumber: 0, // numbered by the server at sync time
+          clientRef: null,
+          offlineCreated: true,
+          synced: false,
+          whatsappNotified: false,
+          createdAt: created,
+          cancelledAt: null,
+          cancelReason: null,
+          lines: quote.lines.map((l, i) => ({
+            id: `${saleId}:${i}`,
+            saleId,
+            ...l,
+            deliveredAt: payload.delivered ? created : null,
+          })),
+        });
+        break;
+      }
+
+      case "uniform.deliver": {
+        const ids = new Set(entry.lineIds);
+        for (const sale of result.uniforms.sales) {
+          for (const line of sale.lines) {
+            if (ids.has(line.id)) line.deliveredAt = entry.delivered ? line.deliveredAt ?? new Date(entry.createdAt) : null;
+          }
+        }
         break;
       }
 
