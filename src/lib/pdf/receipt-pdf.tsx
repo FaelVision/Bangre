@@ -17,6 +17,14 @@ const styles = StyleSheet.create({
   footer: { fontSize: 8.5, color: "#8A8278", marginTop: 18, textAlign: "right" },
 });
 
+/**
+ * The PDF's built-in Helvetica has no glyph for the narrow no-break space that
+ * French number formatting puts between thousands: it printed "14/000 CFA".
+ */
+function pdfCFA(amount: number) {
+  return formatCFA(amount).replace(/[  ]/g, " ");
+}
+
 export type ReceiptPdfProps = {
   schoolName: string;
   receiptNumber: number;
@@ -28,6 +36,10 @@ export type ReceiptPdfProps = {
   amount: number;
   remaining: number;
   receivedBy: string;
+  /** "REÇU DE PAIEMENT" unless given — the canteen receipts say what they are for. */
+  title?: string;
+  /** Label of the balance line; tuition receipts show "Reste dû". */
+  remainingLabel?: string;
 };
 
 function ReceiptPdf(props: ReceiptPdfProps) {
@@ -36,7 +48,7 @@ function ReceiptPdf(props: ReceiptPdfProps) {
       <Page size={[320, 420]} style={styles.page}>
         <View style={styles.card}>
           <View style={[styles.center, { borderBottomWidth: 1, borderBottomColor: "#DFD8CC", borderStyle: "dashed", paddingBottom: 12 }]}>
-            <Text style={styles.eyebrow}>REÇU DE PAIEMENT</Text>
+            <Text style={styles.eyebrow}>{props.title ?? "REÇU DE PAIEMENT"}</Text>
             <Text style={styles.schoolName}>{props.schoolName}</Text>
             <Text style={styles.meta}>
               N° {String(props.receiptNumber).padStart(4, "0")} · {formatDate(props.date)}
@@ -70,11 +82,11 @@ function ReceiptPdf(props: ReceiptPdfProps) {
 
           <View style={styles.row}>
             <Text style={styles.amountLabel}>Montant</Text>
-            <Text style={styles.amountValue}>{formatCFA(props.amount)}</Text>
+            <Text style={styles.amountValue}>{pdfCFA(props.amount)}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.amountLabel}>Reste dû</Text>
-            <Text style={{ fontSize: 11, fontWeight: 700 }}>{formatCFA(props.remaining)}</Text>
+            <Text style={styles.amountLabel}>{props.remainingLabel ?? "Reste dû"}</Text>
+            <Text style={{ fontSize: 11, fontWeight: 700 }}>{pdfCFA(props.remaining)}</Text>
           </View>
 
           <Text style={styles.footer}>Cachet & signature ___________</Text>

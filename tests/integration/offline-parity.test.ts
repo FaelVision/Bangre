@@ -207,5 +207,6 @@ test("barre latérale : mêmes compteurs", async () => {
     classesCount: server.classesCount,
     studentsCount: server.studentsCount,
     lateCount: server.lateCount,
+    canteenLateCount: server.canteenLateCount,
   });
 });

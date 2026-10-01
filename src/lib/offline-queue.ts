@@ -39,11 +39,25 @@ export type StudentPayload = {
   whatsappStatus?: string;
 };
 
+export type CanteenPaymentPayload = {
+  studentId: string;
+  selection: { annual: boolean; packageIds: string[]; months: string[] };
+  method: string;
+  date: string;
+  receivedBy: string;
+  notifyWhatsapp: boolean;
+};
+
 export type QueuedOperation =
   | { kind: "payment"; payload: PaymentPayload }
   | { kind: "student.create"; payload: StudentPayload }
   | { kind: "student.update"; studentId: string; payload: StudentPayload }
-  | { kind: "reminder.send"; studentId: string; trancheId: string | null; message: string };
+  | { kind: "reminder.send"; studentId: string; trancheId: string | null; message: string }
+  | { kind: "canteen.payment"; payload: CanteenPaymentPayload }
+  | { kind: "canteen.enroll"; studentId: string; startMonth: string | null }
+  | { kind: "canteen.leave"; studentId: string; endMonth: string }
+  | { kind: "canteen.reminder"; studentId: string; message: string }
+  | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean };
 
 export type QueuedEntry = QueuedOperation & {
   id: string;
@@ -174,14 +188,16 @@ async function markRejected(entry: QueuedEntry, error: string) {
 
 /** The student an entry is about, whatever its kind. */
 function studentIdOf(entry: QueuedEntry): string | null {
-  if (entry.kind === "payment") return entry.payload.studentId;
-  if (entry.kind === "student.update" || entry.kind === "reminder.send") return entry.studentId;
+  if (entry.kind === "payment" || entry.kind === "canteen.payment") return entry.payload.studentId;
+  if ("studentId" in entry) return entry.studentId;
   return null;
 }
 
 function withStudentId(entry: QueuedEntry, studentId: string): QueuedEntry {
-  if (entry.kind === "payment") return { ...entry, payload: { ...entry.payload, studentId } };
-  if (entry.kind === "student.update" || entry.kind === "reminder.send") return { ...entry, studentId };
+  if (entry.kind === "payment" || entry.kind === "canteen.payment") {
+    return { ...entry, payload: { ...entry.payload, studentId } } as QueuedEntry;
+  }
+  if ("studentId" in entry) return { ...entry, studentId };
   return entry;
 }
 

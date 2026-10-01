@@ -1,9 +1,30 @@
-import type { PaymentAllocation, Reminder, Student, Tranche } from "@prisma/client";
+import type {
+  CanteenEnrollment,
+  CanteenPackage,
+  CanteenPaymentMonth,
+  CanteenReminder,
+  CanteenSkip,
+  PaymentAllocation,
+  Reminder,
+  Student,
+  Tranche,
+} from "@prisma/client";
 import type { ClassWithTranches, PaymentWithAllocations, StudentWithPayments } from "@/lib/tuition";
 import { allocatePayment, computeTrancheStates } from "@/lib/tuition";
 import { nextMatricule, normalizeMatricule } from "@/lib/matricule";
 import { normalizePhone } from "@/lib/phone";
 import { parseDateInput } from "@/lib/date";
+import {
+  addMonths,
+  enrolledMonths,
+  isMonthKey,
+  monthKey,
+  openEnrollment,
+  quoteCanteenPayment,
+  type CanteenPaymentWithMonths,
+  type CanteenPlanWithPackages,
+} from "@/lib/canteen";
+import type { CanteenDataset } from "@/lib/canteen-overview";
 import type { QueuedEntry } from "@/lib/offline-queue";
 
 /**
@@ -25,6 +46,7 @@ export type MirrorSchool = {
   subscriptionStatus: string;
   subscriptionRenewsAt: Date | null;
   blocked: boolean;
+  canteenEnabled: boolean;
 };
 
 export type MirrorData = {
@@ -35,6 +57,16 @@ export type MirrorData = {
   students: Student[];
   payments: PaymentWithAllocations[];
   reminders: Reminder[];
+  canteen: MirrorCanteen;
+};
+
+/** This year's canteen. A snapshot taken before the canteen existed reads as "none". */
+export type MirrorCanteen = {
+  plan: CanteenPlanWithPackages | null;
+  enrollments: CanteenEnrollment[];
+  payments: CanteenPaymentWithMonths[];
+  reminders: CanteenReminder[];
+  skips: CanteenSkip[];
 };
 
 /** Rows the outbox added on top of the snapshot — the server has not seen them yet. */
@@ -60,6 +92,13 @@ type RawSnapshot = {
   students: Record<string, unknown>[];
   payments: Record<string, unknown>[];
   reminders: Record<string, unknown>[];
+  canteen?: {
+    plan: Record<string, unknown> | null;
+    enrollments: Record<string, unknown>[];
+    payments: Record<string, unknown>[];
+    reminders: Record<string, unknown>[];
+    skips?: Record<string, unknown>[];
+  };
 };
 
 /**
@@ -75,6 +114,7 @@ export function reviveSnapshot(raw: unknown): MirrorData {
     school: {
       ...(snapshot.school as unknown as MirrorSchool),
       subscriptionRenewsAt: optionalDate(snapshot.school.subscriptionRenewsAt),
+      canteenEnabled: snapshot.school.canteenEnabled === true,
     },
     academicYear: snapshot.academicYear,
     classes: snapshot.classes.map((c) => ({
@@ -99,6 +139,54 @@ export function reviveSnapshot(raw: unknown): MirrorData {
       ...(r as unknown as Reminder),
       sentAt: date(r.sentAt),
     })),
+    canteen: reviveCanteen(snapshot.canteen),
+  };
+}
+
+function reviveCanteen(raw: RawSnapshot["canteen"]): MirrorCanteen {
+  if (!raw) return { plan: null, enrollments: [], payments: [], reminders: [], skips: [] };
+  return {
+    plan: raw.plan
+      ? {
+          ...(raw.plan as unknown as CanteenPlanWithPackages),
+          createdAt: date(raw.plan.createdAt),
+          packages: ((raw.plan.packages ?? []) as unknown as CanteenPackage[]).slice(),
+        }
+      : null,
+    enrollments: raw.enrollments.map((e) => ({ ...(e as unknown as CanteenEnrollment), createdAt: date(e.createdAt) })),
+    payments: raw.payments.map((p) => ({
+      ...(p as unknown as CanteenPaymentWithMonths),
+      date: date(p.date),
+      months: ((p.months ?? []) as unknown as CanteenPaymentMonth[]).slice(),
+    })),
+    reminders: raw.reminders.map((r) => ({ ...(r as unknown as CanteenReminder), sentAt: date(r.sentAt) })),
+    skips: (raw.skips ?? []).map((k) => ({ ...(k as unknown as CanteenSkip), createdAt: date(k.createdAt) })),
+  };
+}
+
+/** The canteen screens' input, read from the device copy. */
+export function canteenDataset(data: MirrorData): CanteenDataset {
+  const classById = new Map(data.classes.map((c) => [c.id, c]));
+  return {
+    enabled: data.school.canteenEnabled,
+    schoolName: data.school.name,
+    contactName: data.school.contactName,
+    receiptCounter: data.school.receiptCounter,
+    yearLabel: data.academicYear?.label ?? "",
+    plan: data.canteen.plan,
+    students: data.students
+      .filter((s) => classById.has(s.classId))
+      .map((s) => ({ ...s, class: { name: classById.get(s.classId)!.name } })),
+    classes: data.classes
+      .filter((c) => !c.archived)
+      .sort((a, b) => a.order - b.order)
+      .map((c) => ({ id: c.id, name: c.name })),
+    enrollments: data.canteen.enrollments,
+    payments: data.canteen.payments,
+    reminders: data.canteen.reminders,
+    skips: data.canteen.skips,
+    // The history lives on the server: undoing an action is done online.
+    actions: null,
   };
 }
 
@@ -156,6 +244,13 @@ export function applyPendingOperations(
     students: data.students.slice(),
     payments: data.payments.slice(),
     reminders: data.reminders.slice(),
+    canteen: {
+      ...data.canteen,
+      enrollments: data.canteen.enrollments.slice(),
+      payments: data.canteen.payments.slice(),
+      reminders: data.canteen.reminders.slice(),
+      skips: data.canteen.skips.slice(),
+    },
   };
 
   const mine = entries.filter(
@@ -239,6 +334,121 @@ export function applyPendingOperations(
             trancheId: a.trancheId,
             amount: a.amount,
           })),
+        });
+        break;
+      }
+
+      // The canteen entries mirror `canteen-core.ts`: same checks, so what the
+      // device shows is what the server will record at sync time.
+      case "canteen.payment": {
+        const plan = result.canteen.plan;
+        const studentId = entry.payload.studentId;
+        if (!plan || !result.school.canteenEnabled) break;
+        const quote = quoteCanteenPayment(
+          plan,
+          result.canteen.enrollments.filter((e) => e.studentId === studentId),
+          result.canteen.payments.filter((p) => p.studentId === studentId),
+          entry.payload.selection,
+          result.canteen.skips.filter((k) => k.studentId === studentId).map((k) => k.month)
+        );
+        if (!quote.ok) break;
+        const paymentId = `${LOCAL_ID_PREFIX}${entry.id}`;
+        result.canteen.payments.unshift({
+          id: paymentId,
+          schoolId: data.school.id,
+          studentId,
+          academicYearId: plan.academicYearId,
+          amount: quote.amount,
+          label: quote.label,
+          method: entry.payload.method || "cash",
+          receivedBy: entry.payload.receivedBy || null,
+          date: entry.payload.date ? new Date(entry.payload.date) : new Date(entry.createdAt),
+          receiptNumber: 0, // numbered by the server at sync time
+          clientRef: null,
+          offlineCreated: true,
+          synced: false,
+          whatsappNotified: false,
+          cancelledAt: null,
+          cancelReason: null,
+          months: quote.allocations.map((a, i) => ({ id: `${paymentId}:${i}`, paymentId, ...a })),
+        });
+        break;
+      }
+
+      case "canteen.enroll": {
+        const plan = result.canteen.plan;
+        if (!plan || !result.school.canteenEnabled) break;
+        const mineEnrollments = result.canteen.enrollments.filter((e) => e.studentId === entry.studentId);
+        if (openEnrollment(mineEnrollments)) break;
+        let start = isMonthKey(entry.startMonth) ? entry.startMonth : monthKey(new Date(entry.createdAt));
+        if (start < plan.firstMonth) start = plan.firstMonth;
+        const lastEnd = mineEnrollments.reduce<string | null>(
+          (max, e) => (e.endMonth && (!max || e.endMonth > max) ? e.endMonth : max),
+          null
+        );
+        if (lastEnd && start <= lastEnd) start = addMonths(lastEnd, 1);
+        if (start > plan.lastMonth) break;
+        result.canteen.enrollments.push({
+          id: `${LOCAL_ID_PREFIX}${entry.id}`,
+          schoolId: data.school.id,
+          studentId: entry.studentId,
+          academicYearId: plan.academicYearId,
+          startMonth: start,
+          endMonth: null,
+          createdAt: new Date(entry.createdAt),
+        });
+        break;
+      }
+
+      case "canteen.leave": {
+        const index = result.canteen.enrollments.findIndex((e) => e.studentId === entry.studentId && e.endMonth == null);
+        if (index === -1) break;
+        const open = result.canteen.enrollments[index];
+        const paidAfter = result.canteen.payments.some(
+          (p) =>
+            p.studentId === entry.studentId &&
+            p.months.some((m) => m.month > entry.endMonth && m.month >= open.startMonth)
+        );
+        if (paidAfter) break;
+        if (entry.endMonth < open.startMonth) result.canteen.enrollments.splice(index, 1);
+        else result.canteen.enrollments[index] = { ...open, endMonth: entry.endMonth };
+        break;
+      }
+
+      case "canteen.skip": {
+        const plan = result.canteen.plan;
+        const index = result.canteen.skips.findIndex((k) => k.studentId === entry.studentId && k.month === entry.month);
+        if (!entry.skipped) {
+          if (index !== -1) result.canteen.skips.splice(index, 1);
+          break;
+        }
+        if (!plan || index !== -1) break;
+        const enrolled = enrolledMonths(
+          plan,
+          result.canteen.enrollments.filter((e) => e.studentId === entry.studentId)
+        ).includes(entry.month);
+        const paid = result.canteen.payments.some(
+          (p) => p.studentId === entry.studentId && p.months.some((m) => m.month === entry.month)
+        );
+        if (!enrolled || paid) break;
+        result.canteen.skips.push({
+          id: `${LOCAL_ID_PREFIX}${entry.id}`,
+          schoolId: data.school.id,
+          studentId: entry.studentId,
+          academicYearId: plan.academicYearId,
+          month: entry.month,
+          createdAt: new Date(entry.createdAt),
+        });
+        break;
+      }
+
+      case "canteen.reminder": {
+        result.canteen.reminders.unshift({
+          id: `${LOCAL_ID_PREFIX}${entry.id}`,
+          schoolId: data.school.id,
+          studentId: entry.studentId,
+          message: entry.message,
+          sentAt: new Date(entry.createdAt),
         });
         break;
       }

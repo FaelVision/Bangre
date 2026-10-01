@@ -44,7 +44,13 @@ model School {
   blockedReason         String?
   blockedAt             DateTime?
 
+  // One sequence shared by tuition and canteen receipts, so a receipt number
+  // never designates two payments.
   receiptCounter        Int       @default(0)
+
+  // The canteen is an option. Turning it off hides nothing that was recorded:
+  // its prices, enrolments and payments stay, ready for when it is back on.
+  canteenEnabled        Boolean   @default(false)
 
   academicYears         AcademicYear[]
   classes               SchoolClass[]
@@ -56,6 +62,12 @@ model School {
   adminMessages         AdminMessage[]
   errorLogs             ErrorLog[]
   passwordResetTokens   PasswordResetToken[]
+  canteenPlans          CanteenPlan[]
+  canteenEnrollments    CanteenEnrollment[]
+  canteenPayments       CanteenPayment[]
+  canteenReminders      CanteenReminder[]
+  canteenSkips          CanteenSkip[]
+  canteenActions        CanteenAction[]
 }
 
 /** A one-time link sent to a school to let them set a new password. */
@@ -138,6 +150,10 @@ model AcademicYear {
   createdAt DateTime @default(now())
 
   classes   SchoolClass[]
+  canteenPlans       CanteenPlan[]
+  canteenEnrollments CanteenEnrollment[]
+  canteenPayments    CanteenPayment[]
+  canteenSkips       CanteenSkip[]
 
   @@unique([schoolId, label])
 }
@@ -216,6 +232,11 @@ model Student {
   payments       Payment[]
   reminders      Reminder[]
   promotionDecisions PromotionDecision[]
+  canteenEnrollments CanteenEnrollment[]
+  canteenPayments    CanteenPayment[]
+  canteenReminders   CanteenReminder[]
+  canteenSkips       CanteenSkip[]
+  canteenActions     CanteenAction[]
 
   @@unique([schoolId, matricule])
 }
@@ -309,4 +330,173 @@ model SyncLogEntry {
   entityId  String
   action    String
   syncedAt  DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Cantine. Optional per school; only the students enrolled in it pay, month by
+// month. Months are written "YYYY-MM" everywhere ("2026-10").
+// ---------------------------------------------------------------------------
+
+/** The canteen prices and calendar of one academic year. */
+model CanteenPlan {
+  id             String   @id @default(cuid())
+  schoolId       String
+  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  monthlyPrice   Int
+  // Price of every month of the year paid at once. Null: no annual price.
+  annualPrice    Int?
+  firstMonth     String // "2026-10"
+  lastMonth      String // "2027-06"
+  // A month not paid by this day of the month is late.
+  dueDay         Int      @default(5)
+
+  createdAt      DateTime @default(now())
+
+  packages       CanteenPackage[]
+
+  @@unique([schoolId, academicYearId])
+}
+
+/** A price the school sets for several months paid together ("1er trimestre"). */
+model CanteenPackage {
+  id      String      @id @default(cuid())
+  planId  String
+  plan    CanteenPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  label   String
+  months  String // csv of "YYYY-MM"
+  price   Int
+  order   Int         @default(0)
+}
+
+/**
+ * One stretch of time a student eats at the canteen. A student who leaves and
+ * comes back has two rows; `endMonth` null means still enrolled.
+ */
+model CanteenEnrollment {
+  id             String   @id @default(cuid())
+  schoolId       String
+  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  startMonth     String
+  endMonth       String?
+
+  createdAt      DateTime @default(now())
+
+  @@index([schoolId, academicYearId])
+  @@index([studentId])
+}
+
+model CanteenPayment {
+  id             String   @id @default(cuid())
+  schoolId       String
+  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+
+  amount         Int
+  // What the receipt says was paid: "Octobre 2026 à décembre 2026", "Année complète"…
+  label          String
+  method         String   @default("cash")
+  receivedBy     String?
+  date           DateTime @default(now())
+  receiptNumber  Int
+  // Device outbox id of a payment replayed from offline, to recognise a replay.
+  clientRef      String?
+
+  offlineCreated Boolean  @default(false)
+  synced         Boolean  @default(true)
+  whatsappNotified Boolean @default(false)
+
+  // A payment entered by mistake is cancelled, never deleted: it stays in the
+  // journal marked "Annulé", its receipt number is not reused, and its months
+  // are owed again.
+  cancelledAt    DateTime?
+  cancelReason   String?
+
+  months         CanteenPaymentMonth[]
+
+  @@unique([schoolId, receiptNumber])
+  @@index([schoolId, academicYearId])
+  @@index([schoolId, clientRef])
+}
+
+/** The share of a canteen payment that settles one month. */
+model CanteenPaymentMonth {
+  id        String         @id @default(cuid())
+  paymentId String
+  payment   CanteenPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  month     String
+  amount    Int
+}
+
+/**
+ * A month an enrolled student does not eat at the canteen (away, sick, the
+ * family said so). It is not owed and never late; the student stays enrolled.
+ */
+model CanteenSkip {
+  id             String   @id @default(cuid())
+  schoolId       String
+  school         School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  month          String
+  createdAt      DateTime @default(now())
+
+  @@unique([studentId, academicYearId, month])
+  @@index([schoolId, academicYearId])
+}
+
+/**
+ * The canteen history: one row per change made to a student's canteen, with
+ * what it takes to put things back. The day it was made, it can be undone.
+ *
+ * kind / data:
+ *   payment  { paymentId }
+ *   enroll   { enrollmentId }
+ *   leave    { enrollmentId, startMonth, endMonth, cancelled }  (cancelled: the stretch was deleted)
+ *   skip     { month, skipped }
+ *   start    { enrollmentId, from, to }
+ */
+model CanteenAction {
+  id             String    @id @default(cuid())
+  schoolId       String
+  school         School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYearId String
+
+  kind           String
+  data           String // JSON
+  label          String // what the history shows: "Paiement 14 000 CFA · 1er trimestre"
+  createdAt      DateTime  @default(now())
+
+  undoneAt       DateTime?
+  undoReason     String?
+
+  @@index([schoolId, createdAt])
+}
+
+/** A WhatsApp rappel about unpaid canteen months, kept apart from tuition rappels. */
+model CanteenReminder {
+  id        String   @id @default(cuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  message   String
+  sentAt    DateTime @default(now())
+
+  @@index([schoolId, sentAt])
 }

@@ -1,6 +1,7 @@
 import type { Reminder, Tranche } from "@prisma/client";
 import { computeStudentSummary, type StudentSummary, type StudentWithPayments } from "@/lib/tuition";
-import { findStudentWithPayments, studentsWithPayments, type MirrorData } from "@/lib/offline-data";
+import { canteenDataset, findStudentWithPayments, studentsWithPayments, type MirrorData } from "@/lib/offline-data";
+import { canteenLateCount } from "@/lib/canteen-overview";
 
 /**
  * The same figures the server computes in `queries.ts`, computed on the device
@@ -37,6 +38,7 @@ export function sidebarCounts(data: MirrorData, now: Date = new Date()) {
     classesCount: data.classes.filter((c) => !c.archived).length,
     studentsCount: rows.length,
     lateCount: rows.filter((r) => r.summary.status === "retard").length,
+    canteenLateCount: canteenLateCount(canteenDataset(data), now),
   };
 }
 

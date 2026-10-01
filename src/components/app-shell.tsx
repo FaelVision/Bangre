@@ -5,7 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 
-export type ShellCounts = { classesCount: number; studentsCount: number; lateCount: number };
+export type ShellCounts = { classesCount: number; studentsCount: number; lateCount: number; canteenLateCount?: number };
 
 /**
  * App frame. On large screens the sidebar is a permanent column; below `lg`

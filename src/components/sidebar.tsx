@@ -32,7 +32,7 @@ export function Sidebar({
   academicYearLabel: string;
   contactInitials: string;
   contactName: string;
-  counts: { classesCount: number; studentsCount: number; lateCount: number };
+  counts: { classesCount: number; studentsCount: number; lateCount: number; canteenLateCount?: number };
   /** Drawer state below `lg`; ignored on large screens where the column is permanent. */
   open?: boolean;
   onClose?: () => void;
@@ -48,6 +48,7 @@ export function Sidebar({
     { href: "/eleves", label: "Élèves", count: counts.studentsCount },
     { href: "/retards", label: "Retards de paiement", count: counts.lateCount, badgeTone: "danger" },
     { href: "/paiements", label: "Paiements & reçus" },
+    { href: "/cantine", label: "Cantine", count: counts.canteenLateCount || undefined, badgeTone: "danger" },
     { href: "/passage-annee", label: "Passage d'année" },
   ];
 

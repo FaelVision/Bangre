@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { computeStudentSummary, studentQueryInclude, type StudentWithPayments } from "@/lib/tuition";
+import { canteenLateCountFor } from "@/lib/canteen-core";
 
 /**
  * Every active student in the school, with their class/tranches/payments
@@ -264,11 +265,12 @@ export const getPromotionOverview = cache(async (schoolId: string) => {
 });
 
 export const getSidebarCounts = cache(async (schoolId: string) => {
-  const [classesCount, studentsCount, all] = await Promise.all([
+  const [classesCount, studentsCount, all, canteenLateCount] = await Promise.all([
     prisma.schoolClass.count({ where: { schoolId, archived: false } }),
     prisma.student.count({ where: { schoolId, status: "active" } }),
     getActiveStudentsWithSummary(schoolId),
+    canteenLateCountFor(schoolId),
   ]);
   const lateCount = all.filter((row) => row.summary.status === "retard").length;
-  return { classesCount, studentsCount, lateCount };
+  return { classesCount, studentsCount, lateCount, canteenLateCount };
 });

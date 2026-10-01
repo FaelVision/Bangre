@@ -1,5 +1,5 @@
 /* Bangré offline shell. Bump CACHE_VERSION to invalidate everything. */
-const CACHE_VERSION = "v11";
+const CACHE_VERSION = "v14";
 const PAGES_CACHE = `bangre-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `bangre-assets-${CACHE_VERSION}`;
 

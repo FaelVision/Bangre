@@ -7,6 +7,12 @@ import { buildWhatsAppLink } from "@/lib/whatsapp-link";
 
 export type { PreparedReminder };
 
+/** What one row needs: who, which number, which message. */
+type QueueItem = Pick<PreparedReminder, "studentId" | "label" | "phone" | "message">;
+
+/** Records a rappel once WhatsApp was opened. Tuition rappels by default; the canteen passes its own. */
+type ConfirmSent<T extends QueueItem> = (item: T, message: string) => Promise<unknown>;
+
 /**
  * Shown after a bulk "Envoyer les rappels" click. Each family got its message
  * pre-built server-side from their current situation; this lets the user tap
@@ -14,14 +20,16 @@ export type { PreparedReminder };
  * filled in. WhatsApp has no real bulk-send: this is as close as a plain
  * wa.me link gets, one click per family.
  */
-export function WhatsAppQueueModal({
+export function WhatsAppQueueModal<T extends QueueItem = PreparedReminder>({
   items,
   skipped,
   onClose,
+  confirm = confirmReminderSent as unknown as ConfirmSent<T>,
 }: {
-  items: PreparedReminder[];
+  items: T[];
   skipped: number;
   onClose: () => void;
+  confirm?: ConfirmSent<T>;
 }) {
   const [sent, setSent] = useState<Set<string>>(new Set());
 
@@ -57,7 +65,13 @@ export function WhatsAppQueueModal({
             </div>
           )}
           {items.map((item) => (
-            <Row key={item.studentId} item={item} sent={sent.has(item.studentId)} onSent={() => setSent((prev) => new Set(prev).add(item.studentId))} />
+            <Row
+              key={item.studentId}
+              item={item}
+              confirm={confirm}
+              sent={sent.has(item.studentId)}
+              onSent={() => setSent((prev) => new Set(prev).add(item.studentId))}
+            />
           ))}
         </div>
 
@@ -74,7 +88,17 @@ export function WhatsAppQueueModal({
   );
 }
 
-function Row({ item, sent, onSent }: { item: PreparedReminder; sent: boolean; onSent: () => void }) {
+function Row<T extends QueueItem>({
+  item,
+  confirm,
+  sent,
+  onSent,
+}: {
+  item: T;
+  confirm: ConfirmSent<T>;
+  sent: boolean;
+  onSent: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(item.message);
   const [, startTransition] = useTransition();
@@ -87,7 +111,7 @@ function Row({ item, sent, onSent }: { item: PreparedReminder; sent: boolean; on
     onSent();
     setEditing(false);
     startTransition(async () => {
-      await confirmReminderSent(item, text);
+      await confirm(item, text);
       router.refresh();
     });
   }

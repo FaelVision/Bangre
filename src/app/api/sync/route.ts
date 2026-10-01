@@ -6,6 +6,14 @@ import { persistPayment, type RecordPaymentInput } from "@/lib/payments-core";
 import { createStudent, updateStudent, type StudentInput } from "@/lib/students-core";
 import { recordReminderSent } from "@/lib/reminders-core";
 import { normalizePhone } from "@/lib/phone";
+import {
+  enrollInCanteen,
+  leaveCanteen,
+  persistCanteenPayment,
+  recordCanteenReminder,
+  setCanteenSkip,
+  type CanteenPaymentInput,
+} from "@/lib/canteen-core";
 
 /** Every entry of the device outbox carries these, whatever its kind. */
 type Envelope = { id?: string; schoolId?: string };
@@ -16,6 +24,11 @@ type Body = Envelope &
     | { kind: "student.create"; payload: StudentInput }
     | { kind: "student.update"; studentId: string; payload: StudentInput }
     | { kind: "reminder.send"; studentId: string; trancheId: string | null; message: string }
+    | { kind: "canteen.payment"; payload: CanteenPaymentInput }
+    | { kind: "canteen.enroll"; studentId: string; startMonth: string | null }
+    | { kind: "canteen.leave"; studentId: string; endMonth: string }
+    | { kind: "canteen.reminder"; studentId: string; message: string }
+    | { kind: "canteen.skip"; studentId: string; month: string; skipped: boolean }
   );
 
 /** A replay of this entry within that window is the same entry sent twice, not a new one. */
@@ -118,6 +131,57 @@ export async function POST(req: NextRequest) {
         });
         if (replayed) return NextResponse.json({ ok: true, reminderId: replayed.id });
         return NextResponse.json(await recordReminderSent(schoolId, body.studentId, body.trancheId, body.message));
+      }
+
+      case "canteen.payment": {
+        const result = await persistCanteenPayment(schoolId, {
+          ...body.payload,
+          offlineCreated: true,
+          clientRef: body.id ? `sync:${body.id}` : undefined,
+        });
+        if (result.ok) return NextResponse.json(result);
+        return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
+      }
+
+      // Enrolling an enrolled student, or taking out one already out, changes
+      // nothing: both are safe to receive twice as they are.
+      case "canteen.enroll":
+      case "canteen.leave": {
+        const result =
+          body.kind === "canteen.enroll"
+            ? await enrollInCanteen(schoolId, body.studentId, body.startMonth)
+            : await leaveCanteen(schoolId, body.studentId, body.endMonth);
+        if (result.ok) return NextResponse.json(result);
+        return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
+      }
+
+      // Sets a state ("sans cantine" or not) rather than toggling it: a replay
+      // leaves it as it is.
+      case "canteen.skip": {
+        const result = await setCanteenSkip(schoolId, body.studentId, body.month, Boolean(body.skipped));
+        if (result.ok) return NextResponse.json(result);
+        return NextResponse.json({ ok: false, error: result.error, permanent: true }, { status: 400 });
+      }
+
+      case "canteen.reminder": {
+        const student = await prisma.student.findFirst({
+          where: { id: body.studentId, schoolId },
+          select: { id: true },
+        });
+        if (!student) {
+          return NextResponse.json({ ok: false, error: "Élève introuvable.", permanent: true }, { status: 400 });
+        }
+        const replayed = await prisma.canteenReminder.findFirst({
+          where: {
+            schoolId,
+            studentId: body.studentId,
+            message: body.message,
+            sentAt: { gte: new Date(Date.now() - REPLAY_WINDOW_MS) },
+          },
+          select: { id: true },
+        });
+        if (replayed) return NextResponse.json({ ok: true, reminderId: replayed.id });
+        return NextResponse.json(await recordCanteenReminder(schoolId, body.studentId, body.message));
       }
 
       default:
