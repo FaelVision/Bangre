@@ -43,6 +43,7 @@ function load(): OfflineReadiness {
 
 function set(next: OfflineReadiness) {
   current = next;
+  loaded = true;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
@@ -51,8 +52,16 @@ function set(next: OfflineReadiness) {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(READINESS_CHANGED));
 }
 
+let loaded = false;
+
+// useSyncExternalStore calls this on every render and needs the *same object*
+// back until something changes: load() builds a fresh one each time when
+// nothing is remembered, which made React loop forever (error #185).
 export function getReadiness(): OfflineReadiness {
-  if (current.state === "unknown" && typeof window !== "undefined") current = load();
+  if (!loaded && typeof window !== "undefined") {
+    loaded = true;
+    current = load();
+  }
   return current;
 }
 
