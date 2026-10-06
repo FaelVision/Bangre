@@ -22,7 +22,7 @@ export function SignupForm({
   return (
     <div>
       <div className="text-[13px] font-semibold text-(--color-primary) tracking-wider uppercase">
-        Étape 1 sur 2
+        Gratuit toute l&apos;année scolaire 2026-2027
       </div>
       <div className="text-[27px] font-semibold tracking-tight mt-2">Inscrire l&apos;établissement</div>
       <div className="text-sm text-(--color-text-muted) mt-1.5">

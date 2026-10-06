@@ -18,6 +18,7 @@ import {
 } from "@/lib/validation";
 import { currentAcademicYearLabel } from "@/lib/promotion";
 import { sendEmail } from "@/lib/mailer";
+import { isPromoPeriod } from "@/lib/promo";
 
 export type AuthActionState = { error?: string } | undefined;
 
@@ -104,7 +105,8 @@ export async function signupAction(_prevState: AuthActionState, formData: FormDa
   if (googleLink) await clearPendingGoogleLink();
 
   await createSession(school.id);
-  redirect("/abonnement");
+  // Free promotional year: no payment step, straight into the app.
+  redirect(isPromoPeriod() ? "/tableau-de-bord" : "/abonnement");
 }
 
 export async function loginAction(_prevState: AuthActionState, formData: FormData): Promise<AuthActionState> {

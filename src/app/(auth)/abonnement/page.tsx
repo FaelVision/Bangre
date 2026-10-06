@@ -4,6 +4,7 @@ import Link from "next/link";
 import { formatDate, formatDateTime, formatAmount } from "@/lib/format";
 import { logoutAction } from "@/lib/actions/auth";
 import { PLANS } from "@/lib/plans";
+import { isPromoPeriod, promoEndsAt } from "@/lib/promo";
 import { SubscriptionForm } from "./subscription-form";
 
 export default async function AbonnementPage() {
@@ -15,6 +16,30 @@ export default async function AbonnementPage() {
     where: { schoolId: school.id, status: "pending" },
     orderBy: { createdAt: "desc" },
   });
+
+  if (isPromoPeriod()) {
+    return (
+      <div>
+        <div className="text-[27px] font-semibold tracking-tight">Bangré est gratuit</div>
+        <div className="border border-[#E7C9A8] bg-(--color-gold-bg) rounded-2xl p-4.5 mt-5.5">
+          <span className="inline-block text-[11.5px] font-semibold px-2.5 py-1 rounded-full bg-(--color-gold-chip-bg) text-(--color-gold-text)">
+            Année de lancement 2026-2027
+          </span>
+          <div className="text-[15px] font-semibold mt-2.5">{school.name}</div>
+          <div className="text-[13.5px] text-(--color-text-muted) mt-1 leading-relaxed">
+            Toutes les fonctionnalités sont offertes jusqu&apos;au {formatDate(promoEndsAt())}. Aucun paiement n&apos;est
+            demandé, et nous vous préviendrons bien avant la fin de cette période.
+          </div>
+        </div>
+        <Link
+          href="/tableau-de-bord"
+          className="mt-4 h-[48px] w-full rounded-[10px] bg-(--color-primary) text-white font-semibold flex items-center justify-center no-underline hover:no-underline"
+        >
+          Aller au tableau de bord
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div>

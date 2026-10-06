@@ -3,6 +3,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { decryptSession, getSessionCookie } from "@/lib/session";
 import { prisma } from "@/lib/db";
+import { isPromoPeriod } from "@/lib/promo";
 
 export const verifySession = cache(async () => {
   const token = await getSessionCookie();
@@ -34,6 +35,7 @@ export function hasCurrentSubscription(school: {
   subscriptionStatus: string;
   subscriptionRenewsAt: Date | null;
 }) {
+  if (isPromoPeriod()) return true; // free promotional year: access for every school
   if (school.subscriptionStatus !== "active") return false;
   if (!school.subscriptionRenewsAt) return true; // legacy rows with no end date
   return school.subscriptionRenewsAt.getTime() > Date.now();

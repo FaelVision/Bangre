@@ -1,6 +1,7 @@
 import { requireActiveSubscription, getCurrentAcademicYear, verifySession } from "@/lib/dal";
 import { getSidebarCounts } from "@/lib/queries";
 import { daysUntil, formatDate } from "@/lib/format";
+import { isPromoPeriod } from "@/lib/promo";
 import { AppShell } from "@/components/app-shell";
 import { PaymentModalProvider } from "@/components/payment-modal-context";
 import { ServiceWorkerRegister } from "@/components/sw-register";
@@ -25,7 +26,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Only a paid subscription opens the app, so its renewal date is the one
   // worth warning about.
   const expiryDate = school.subscriptionRenewsAt;
-  const daysLeft = expiryDate ? daysUntil(expiryDate) : null;
+  // During the free promotional year there is nothing to renew yet.
+  const daysLeft = expiryDate && !isPromoPeriod() ? daysUntil(expiryDate) : null;
 
   return (
     <PaymentModalProvider>
