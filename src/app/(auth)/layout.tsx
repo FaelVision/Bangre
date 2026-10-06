@@ -40,7 +40,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
           <div className="text-[13px] text-[#F7EFE4]/55">
-            5 000 CFA / mois ou 55 000 CFA / an par établissement · paiement Mobile Money
+            Année scolaire 2026-2027 offerte : toutes les fonctionnalités, sans aucun paiement
           </div>
         </div>
 

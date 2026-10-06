@@ -20,15 +20,15 @@ export default async function AbonnementPage() {
   if (isPromoPeriod()) {
     return (
       <div>
-        <div className="text-[27px] font-semibold tracking-tight">Bangré est gratuit</div>
+        <div className="text-[27px] font-semibold tracking-tight">Cette année scolaire est offerte</div>
         <div className="border border-[#E7C9A8] bg-(--color-gold-bg) rounded-2xl p-4.5 mt-5.5">
           <span className="inline-block text-[11.5px] font-semibold px-2.5 py-1 rounded-full bg-(--color-gold-chip-bg) text-(--color-gold-text)">
-            Année de lancement 2026-2027
+            Offre de lancement 2026-2027
           </span>
           <div className="text-[15px] font-semibold mt-2.5">{school.name}</div>
           <div className="text-[13.5px] text-(--color-text-muted) mt-1 leading-relaxed">
-            Toutes les fonctionnalités sont offertes jusqu&apos;au {formatDate(promoEndsAt())}. Aucun paiement n&apos;est
-            demandé, et nous vous préviendrons bien avant la fin de cette période.
+            Bangré est offert à votre établissement jusqu&apos;au {formatDate(promoEndsAt())} : toutes les
+            fonctionnalités, sans aucun paiement. Nous vous préviendrons bien avant la fin de cette période.
           </div>
         </div>
         <Link

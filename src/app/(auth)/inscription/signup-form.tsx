@@ -22,7 +22,7 @@ export function SignupForm({
   return (
     <div>
       <div className="text-[13px] font-semibold text-(--color-primary) tracking-wider uppercase">
-        Gratuit toute l&apos;année scolaire 2026-2027
+        Année scolaire 2026-2027 offerte
       </div>
       <div className="text-[27px] font-semibold tracking-tight mt-2">Inscrire l&apos;établissement</div>
       <div className="text-sm text-(--color-text-muted) mt-1.5">
@@ -139,7 +139,7 @@ export function SignupForm({
         {state?.error && <div className="text-[13px] text-(--color-danger-text) mt-3">{state.error}</div>}
 
         <Button type="submit" size="lg" className="w-full mt-5.5" disabled={pending}>
-          {pending ? "Création…" : "Continuer vers l'abonnement"}
+          {pending ? "Création…" : "Créer le compte gratuitement"}
         </Button>
 
         <div className="text-center text-[13.5px] text-(--color-text-muted) mt-3.5">

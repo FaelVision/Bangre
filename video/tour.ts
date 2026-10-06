@@ -241,7 +241,7 @@ async function main() {
     await type(page.locator('input[name="email"]'), SIGNUP.email);
     await type(page.locator('input[name="password"]'), SIGNUP.password);
     await click(page.locator('input[name="terms"]'));
-    await click(page.getByRole("button", { name: /Continuer vers l'abonnement/ }));
+    await click(page.getByRole("button", { name: /Créer le compte gratuitement/ }));
     await page.waitForURL("**/abonnement", { timeout: 20000 });
   });
 

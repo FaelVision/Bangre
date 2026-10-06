@@ -32,6 +32,7 @@ Connexion de démonstration :
 Aucune des deux ne passe par une API métier — volontairement, pour ne dépendre d'aucun compte marchand ni d'API Business :
 
 - **WhatsApp** (`src/lib/whatsapp.ts`) : rappels et confirmations de paiement sont des liens `wa.me` pré-remplis, ouverts et envoyés manuellement par l'utilisateur depuis son propre WhatsApp.
+- **Année 2026-2027 offerte** : tant que la promotion court (`src/lib/promo.ts`, fin le 31 août 2027, modifiable via `PROMO_FREE_UNTIL`), toutes les écoles ont accès sans payer ; `/abonnement` n'affiche alors aucun tarif. Ensuite, le paiement ci-dessous redevient obligatoire.
 - **Mobile Money (abonnement)** : l'établissement envoie lui-même la cotisation (Orange Money / Moov Money) vers le numéro Bangré affiché sur `/abonnement` — le bouton « Composer » ouvre le clavier d'appel avec le code USSD pré-rempli. Le paiement est enregistré comme **en attente**, et un administrateur le confirme manuellement depuis `/admin` une fois la réception vérifiée sur le compte Mobile Money (`src/lib/subscription-core.ts` : `recordSubscriptionPayment` / `confirmSubscriptionPayment` / `rejectSubscriptionPayment`) — c'est seulement cette confirmation qui active ou prolonge l'abonnement.
 
 ### Messages de rappel
